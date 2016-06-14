@@ -205,6 +205,9 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
   }
 
   def save(download: Download): Boolean = {
+    if (!directory.isDirectory())
+      return true
+    
     if (download.previous.map(_.metaData.checksum).contains(download.metaData.checksum))
       return false
 
@@ -217,12 +220,12 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
 
       if (!targetFile.getParentFile.isDirectory && !targetFile.getParentFile.mkdirs) {
         logInfo("Failed to create target directory " + targetFile.getParentFile + " for", download.source.feedUrl)
-        return false;
+        return false
       }
 
       if (!targetMetaDataFile.getParentFile.isDirectory && !targetMetaDataFile.getParentFile.mkdirs) {
         logInfo("Failed to create metadata target directory " + targetMetaDataFile.getParentFile + " for", download.source.feedUrl)
-        return false;
+        return false
       }
 
       try {
