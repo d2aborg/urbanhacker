@@ -215,8 +215,16 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
       val targetFile = file(download.source.feedUrl, download.timestamp)
       val targetMetaDataFile = metaDataFile(download.source.feedUrl, download.timestamp)
 
-      targetFile.getParentFile.mkdirs
-      targetMetaDataFile.getParentFile.mkdirs
+      if (!targetFile.getParentFile.isDirectory && !targetFile.getParentFile.mkdirs) {
+        logInfo("Failed to create target directory " + targetFile.getParentFile + " for", download.source.feedUrl)
+        return false;
+      }
+
+      if (!targetMetaDataFile.getParentFile.isDirectory && !targetMetaDataFile.getParentFile.mkdirs) {
+        logInfo("Failed to create metadata target directory " + targetMetaDataFile.getParentFile + " for", download.source.feedUrl)
+        return false;
+      }
+
       try {
         XML.save(targetFile.getPath, download.xml, "UTF-8")
         writeMetaData(targetMetaDataFile, download.metaData)
