@@ -1,0 +1,60 @@
+@import model.Article
+@import java.time.LocalDateTime
+
+@(section: String, articles: Seq[Article], nextPage: Option[Int], timestamp: LocalDateTime)(implicit now: LocalDateTime)
+
+@template(section) {
+    @page(articles, nextPage, timestamp)
+
+    <div class="more-content" style="display:hidden"></div>
+} {
+    <script type="text/javascript">
+        function loadMore() {
+            var loadMore = $('.load-more')
+
+            var nextPageUrl = loadMore.find("a").attr("href")
+            if (!nextPageUrl)
+                return
+
+            loadMore.find("h3").html("<i class='fa fa-refresh fa-spin fa-2x fa-fw'></i><span class='sr-only'>Loading...</span>")
+            console.log("Loading: " + nextPageUrl)
+
+            var content = $('.content')
+            var moreContent = $('.more-content')
+
+            $.ajax({ url: nextPageUrl + "&ajax=true" }).done(function(data) {
+                moreContent.html(data)
+
+                for (var i = 0; i < 3; i++) {
+                    content.find("> .col-lg-4:eq("+i+")").append(moreContent.find("> .content > .col-lg-4:eq("+i+") > .article"))
+                }
+
+                loadMore.replaceWith(moreContent.find("> .load-more"))
+
+                moreContent.empty()
+            });
+        }
+
+        $(document).ready(function() {
+            var win = $(window);
+
+            // Each time the user scrolls
+            win.scroll(function() {
+                // End of the document reached?
+                if ($(document).height() - win.height() < win.scrollTop() + 1000) {
+                    loadMore();
+                }
+            });
+        });
+
+        $(document).ready(function() {
+            setInterval(function() {
+                console.log("Refreshing dates...")
+                $(".content .article .since").each(function(index) {
+                    $(this).html(moment(new Date(Date.parse($(this).attr("date")))).fromNow())
+                });
+            }, 60000)
+        });
+    </script>
+}
+

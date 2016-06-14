@@ -1,0 +1,137 @@
+body {
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.navbar {
+  margin-bottom: 20px;
+}
+
+@font-face {
+    font-family: marsneveneksk;
+    src: url(../fonts/marsneveneksk.otf);
+}
+
+.masthead {
+    margin-bottom: 20px;
+}
+.masthead h1 {
+    font-family: marsneveneksk;
+    font-size: 5em;
+}
+.masthead a {
+    color: crimson;
+}
+.masthead a:hover {
+    color: crimson;
+    text-decoration: none;
+}
+
+.article {
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 3em;
+    box-shadow: 5px 5px 5px #ccc;
+    border: 1px solid lightgrey;
+    padding: 0 1em;
+}
+
+.article .image {
+    display: block;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1em;
+}
+.article .image img {
+    width: 100%;
+    opacity: 0;
+    -webkit-transition: opacity 150ms;
+    -moz-transition: opacity 150ms;
+    -ms-transition: opacity 150ms;
+    transition: opacity 150ms;
+}
+.article .image.loaded img {
+    opacity: 1;
+}
+
+.article a.title {
+    color: hotpink;
+}
+.article a.title:hover {
+    color: deeppink;
+    text-decoration: none;
+}
+
+.article a {
+//    color: grey;
+}
+.article a:hover {
+//    color: #337ab7;
+    text-decoration: none;
+}
+
+.load-more a {
+}
+.load-more a:hover {
+    text-decoration: none;
+}
+.load-more h3 {
+    text-align: center;
+    border: 1px solid lightgrey;
+    padding: 0.5em 2em;
+    width: 20em;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.article img.favicon {
+    width: 16px;
+    height: 16px;
+}
+.article .vbar {
+    color: lightgrey;
+}
+
+ul.share-buttons, ul.follow-buttons {
+    list-style: none;
+    padding: 0;
+}
+ul.follow-buttons {
+    float: right;
+}
+ul.share-buttons li, ul.follow-buttons li {
+    display: inline;
+}
+ul.share-buttons li a, ul.follow-buttons li a {
+    color: lightgrey;
+}
+
+ul.share-buttons li a.share-facebook:hover {
+    color: #3b5998;
+}
+ul.share-buttons li a.share-twitter:hover {
+    color: #00aced;
+}
+ul.share-buttons li a.share-googleplus:hover {
+    color: #d34836;
+}
+ul.share-buttons li a.share-pinterest:hover {
+    color: #cb2027;
+}
+ul.share-buttons li a.share-linkedin:hover {
+    color: #007bb6;
+}
+ul.share-buttons li a.share-tumblr:hover {
+    color: #32506d;
+}
+ul.share-buttons li a.share-reddit:hover {
+    color: #cee3f8;
+}
+ul.share-buttons li a.share-email:hover {
+    color: rgb(255, 188, 0);
+}
+
+ul.follow-buttons li a.follow-feed:hover {
+    color: #FA9B39;
+}
