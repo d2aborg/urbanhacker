@@ -22,9 +22,9 @@
                         @if(article.feed.siteUrl.nonEmpty) {
                             <a href="@article.feed.siteUrl" class="source">
                                 <img src="@article.feed.favicon" class="favicon" onerror="this.style.display='none'"/>
-                                @article.feed.name
+                                @article.feed.title
                             </a>
-                        } else { @article.feed.name }
+                        } else { @article.feed.title }
                         <span class="vbar">|</span>
                         @article.commentsLink.map { commentsLink =>
                             <a href="@commentsLink" class="comments">Comments &raquo;</a> <span class="vbar">|</span>
