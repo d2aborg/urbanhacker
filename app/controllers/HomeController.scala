@@ -29,15 +29,11 @@ class HomeController @Inject()(actorSystem: ActorSystem, feedCache: FeedCache, l
   }
 
   def index = Action { implicit request =>
-    load("tech", "News")
+    load("news", "News")
   }
 
   def blogs = Action { implicit request =>
     load("blogs", "Blogs")
-  }
-
-  def tools = Action { implicit request =>
-    load("tools", "Tools")
   }
 
   def about = Action {

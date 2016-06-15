@@ -4,7 +4,6 @@
 
 GET     /                           controllers.HomeController.index
 GET     /blogs                      controllers.HomeController.blogs
-GET     /tools                      controllers.HomeController.tools
 GET     /about                      controllers.HomeController.about
 GET     /reload                     controllers.HomeController.reload
 

@@ -17,7 +17,9 @@
                 return
 
             loadMore.find("h3").html("<i class='fa fa-refresh fa-spin fa-2x fa-fw'></i><span class='sr-only'>Loading...</span>")
-            console.log("Loading: " + nextPageUrl)
+            @if(play.Play.isDev()) {
+                console.log("Loading: " + nextPageUrl)
+            }
 
             var content = $('.content')
             var moreContent = $('.more-content')
@@ -25,8 +27,8 @@
             $.ajax({ url: nextPageUrl + "&ajax=true" }).done(function(data) {
                 moreContent.html(data)
 
-                for (var i = 0; i < 3; i++) {
-                    content.find("> .col-lg-4:eq("+i+")").append(moreContent.find("> .content > .col-lg-4:eq("+i+") > .article"))
+                for (var i = 0; i < 2; i++) {
+                    content.find("> .col-lg-6:eq("+i+")").append(moreContent.find("> .content > .col-lg-6:eq("+i+") > .article"))
                 }
 
                 loadMore.replaceWith(moreContent.find("> .load-more"))
@@ -49,7 +51,9 @@
 
         $(document).ready(function() {
             setInterval(function() {
-                console.log("Refreshing dates...")
+                @if(play.Play.isDev()) {
+                    console.log("Refreshing dates...")
+                }
                 $(".content .article .since").each(function(index) {
                     $(this).html(moment(new Date(Date.parse($(this).attr("date")))).fromNow())
                 });

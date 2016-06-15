@@ -4,6 +4,8 @@ body {
 }
 
 .navbar {
+  float: right;
+  margin-top: 1em;
   margin-bottom: 20px;
 }
 
@@ -18,6 +20,7 @@ body {
 .masthead h1 {
     font-family: marsneveneksk;
     font-size: 5em;
+    margin: 0;
 }
 .masthead a {
     color: crimson;
@@ -30,7 +33,7 @@ body {
 .article {
     position: relative;
     overflow: hidden;
-    margin-bottom: 3em;
+    margin-bottom: 50px;
     box-shadow: 5px 5px 5px #ccc;
     border: 1px solid lightgrey;
     padding: 0 1em;

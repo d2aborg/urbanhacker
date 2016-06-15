@@ -4,9 +4,9 @@
 @(articles: Seq[Article], nextPage: Option[Int], timestamp: LocalDateTime)(implicit now: LocalDateTime)
 
 <div class="row content">
-    @for(column <- List(0, 1, 2)) {
-        <div class="col-lg-4">
-            @for(group <- articles grouped 3; if group.size > column; article <- List(group(column))) {
+    @for(column <- List(0, 1)) {
+        <div class="col-lg-6">
+            @for(group <- articles grouped 2; article <- List(group(column))) {
                 <div class='article'>
                     <h4><a href="@article.link" class="title">@article.title</a></h4>
 

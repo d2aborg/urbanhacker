@@ -54,7 +54,7 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
   }), new SecureRandom())
   SSLContext.setDefault(ctx)
 
-  val sections: List[String] = List("tech", "blogs", "tools")
+  val sections: List[String] = List("news", "blogs")
   val directory = new File("feeds")
   val filenameTimestampPattern = DateTimeFormatter.ofPattern("uuuu-MM-dd_HHmmss")
   val fileExtension: String = ".xml"
@@ -205,9 +205,9 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
   }
 
   def save(download: Download): Boolean = {
-    if (!directory.isDirectory())
+    if (!directory.isDirectory)
       return true
-    
+
     if (download.previous.map(_.metaData.checksum).contains(download.metaData.checksum))
       return false
 
