@@ -28,7 +28,7 @@
                 moreContent.html(data)
 
                 for (var i = 0; i < 2; i++) {
-                    content.find("> .col-lg-6:eq("+i+")").append(moreContent.find("> .content > .col-lg-6:eq("+i+") > .article"))
+                    content.find("> .col-md-6:eq("+i+")").append(moreContent.find("> .content > .col-md-6:eq("+i+") > .article"))
                 }
 
                 loadMore.replaceWith(moreContent.find("> .load-more"))

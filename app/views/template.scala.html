@@ -32,44 +32,24 @@
 
 <div class="container">
 
-    <div class="container">
-
-        <!-- Static navbar -->
-        <nav class="navbar navbar-default">
-            <div class="container-fluid">
-                <div class="navbar-header">
-                    <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
-                        <span class="sr-only">Toggle navigation</span>
-                        <span class="icon-bar"></span>
-                        <span class="icon-bar"></span>
-                        <span class="icon-bar"></span>
-                    </button>
-                </div>
-                <div id="navbar" class="navbar-collapse collapse">
-                    <ul class="nav navbar-nav">
-                        <li class='@if(section == "News") {active}'><a href="/">News</a></li>
-                        <li class='@if(section == "Blogs") {active}'><a href="/blogs">Blogs</a></li>
-                    </ul>
-                    <ul class="nav navbar-nav navbar-right">
-                        <li class='@if(section == "About") {active}'><a href="/about">About</a></li>
-                    </ul>
-                </div><!--/.nav-collapse -->
-            </div><!--/.container-fluid -->
+    <div class="header clearfix">
+        <nav>
+            <ul class="nav nav-pills pull-right">
+                <li role="presentation" class='@if(section == "News") {active}'><a href="/">News</a></li>
+                <li role="presentation" class='@if(section == "Blogs") {active}'><a href="/blogs">Blogs</a></li>
+                <li role="presentation" class='@if(section == "About") {active}'><a href="/about">About</a></li>
+            </ul>
         </nav>
+        <h1><a href="/">( Urban Hacker )</a></h1>
+    </div>
 
-        <div class="masthead">
-            <h1><a href="/">( Urban Hacker )</a></h1>
-        </div>
+    @content
 
-        @content
+    <hr />
 
-        <hr />
-
-        <div class="footer">
-            <p>&copy; <a href="http://www.d2ab.org">Daniel Skogquist Åborg</a> 2016</p>
-        </div>
-
-    </div> <!-- /container -->
+    <div class="footer">
+        <p>&copy; <a href="http://d2ab.org">Daniel Skogquist Åborg</a> 2016</p>
+    </div>
 
 </div> <!-- /container -->
 
