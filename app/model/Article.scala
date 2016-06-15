@@ -79,7 +79,7 @@ object Article {
   val maxSummaryLength = 250
 
   def rss(feed: Feed, item: Node): Option[Article] = {
-    val title = unescape(item \ "title")
+    val title = stripTitle(unescape(item \ "title"), feed)
     val link = unescapeOption(item \ "link")
     if (link isEmpty) {
       Logger.warn("Couldn't find a valid link among: " + (item \ "link"))
@@ -115,15 +115,19 @@ object Article {
     dateOption.map(new Article(feed, title, link get, commentsLink, _, maybeImgSrc, text))
   }
 
+  def stripTitle(title: String, feed: Feed): String = {
+    title.replaceFirst(" - " + quote(feed.title) + "$", "")
+  }
+
   /*
-<link rel="replies" type="application/atom+xml" href="http://keaplogik.blogspot.com/feeds/7850892430692034846/comments/default" title="Post Comments" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-<link rel="replies" type="text/html" href="http://keaplogik.blogspot.com/2016/01/java-base64-url-safe-encoding.html#comment-form" title="0 Comments" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-<link rel="edit" type="application/atom+xml" href="http://www.blogger.com/feeds/3047562558564532519/posts/default/7850892430692034846" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-<link rel="self" type="application/atom+xml" href="http://www.blogger.com/feeds/3047562558564532519/posts/default/7850892430692034846" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-<link rel="alternate" type="text/html" href="http://keaplogik.blogspot.com/2016/01/java-base64-url-safe-encoding.html" title="Java Base64 URL Safe Encoding" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-   */
+  <link rel="replies" type="application/atom+xml" href="http://keaplogik.blogspot.com/feeds/7850892430692034846/comments/default" title="Post Comments" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
+  <link rel="replies" type="text/html" href="http://keaplogik.blogspot.com/2016/01/java-base64-url-safe-encoding.html#comment-form" title="0 Comments" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
+  <link rel="edit" type="application/atom+xml" href="http://www.blogger.com/feeds/3047562558564532519/posts/default/7850892430692034846" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
+  <link rel="self" type="application/atom+xml" href="http://www.blogger.com/feeds/3047562558564532519/posts/default/7850892430692034846" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
+  <link rel="alternate" type="text/html" href="http://keaplogik.blogspot.com/2016/01/java-base64-url-safe-encoding.html" title="Java Base64 URL Safe Encoding" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
+     */
   def atom(feed: Feed, entry: Node): Option[Article] = {
-    val title = unescape(entry \ "title")
+    val title = stripTitle(unescape(entry \ "title"), feed)
     val link = (entry \ "link").filter(n => n \@ "rel" == "alternate" || (n \@ "rel" isEmpty)) \@ "href"
     if (link isEmpty) {
       Logger.warn("Failed to parse feed entry link from: " + (entry \ "link"))
