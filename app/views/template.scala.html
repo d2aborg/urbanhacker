@@ -1,9 +1,9 @@
-@(section: String)(content: Html)(js: Html)
+@(section: String)(content: Html)(js: Html)(implicit request: Request[AnyContent])
 
 @import scala.xml._
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" prefix="og: http://ogp.me/ns#">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -11,7 +11,14 @@
     <!-- Bootstrap: The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
 
     <title>@section | Urban Hacker</title>
-    <link rel="shortcut icon" type="image/png" href='@routes.Assets.versioned("images/imageedit_1_2238569270.png")'>
+    <link rel="shortcut icon" type="image/png" href='@routes.Assets.versioned("images/noun_13217_cc_transparent.png")'>
+
+    <meta property="og:title" content="@section | UrbanHacker" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content='@routes.Assets.versioned("images/noun_13217_cc_transparent.png")' />
+    <meta property="og:url" content="http://urbanhacker.news@request.uri" />
+    <meta property="og:description" content="Simple hacker news and coding blog web site, for fun." />
+    <meta property="og:site_name" content="Urban Hacker" />
 
     <!-- Bootstrap: Latest compiled and minified CSS -->
     <link rel="stylesheet" href='@routes.Assets.versioned("css/bootstrap.min.css")'>

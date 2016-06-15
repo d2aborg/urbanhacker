@@ -36,8 +36,8 @@ class HomeController @Inject()(actorSystem: ActorSystem, feedCache: FeedCache, l
     load("blogs", "Blogs")
   }
 
-  def about = Action {
-    Ok(views.html.about())
+  def about = Action { implicit request =>
+    Ok(views.html.about(request))
   }
 
   def reload = Action {

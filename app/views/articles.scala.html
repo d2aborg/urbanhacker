@@ -1,7 +1,7 @@
 @import model.Article
 @import java.time.LocalDateTime
 
-@(section: String, articles: Seq[Article], nextPage: Option[Int], timestamp: LocalDateTime)(implicit now: LocalDateTime)
+@(section: String, articles: Seq[Article], nextPage: Option[Int], timestamp: LocalDateTime)(implicit now: LocalDateTime, request: Request[AnyContent])
 
 @template(section) {
     @page(articles, nextPage, timestamp)
