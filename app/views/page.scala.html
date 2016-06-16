@@ -15,7 +15,7 @@
                     </div>
                 }
 
-                <p>@article.text</p>
+                <p>@article.croppedText <a href="@article.link" class="source">&raquo;</a></p>
 
                 <p>
                     @if(article.feed.siteUrl.nonEmpty) {
@@ -24,14 +24,19 @@
                             @article.feed.title
                         </a>
                     } else { @article.feed.title }
-                    <span class="vbar">|</span>
+
                     @article.commentsLink.map { commentsLink =>
-                        <a href="@commentsLink" class="comments">Comments &raquo;</a> <span class="vbar">|</span>
+                        <span class="vbar">|</span>
+                        <a href="@commentsLink" class="comments text-nowrap">Comments &raquo;</a>
                     }
-                    <a href="@article.link" class="source"><span class="since" date="@article.dateUTC">@article.since</span> &raquo;</a>
+
+                    <span class="vbar">|</span>
+                    <a href="@article.link" class="source text-nowrap"><span class="since" date="@article.dateUTC">@article.since</span> &raquo;</a>
+
                     <ul class="follow-buttons">
                         <li><a class="follow-feed" href="@article.feed.feedUrl" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
                     </ul>
+
                     <ul class="share-buttons">
                         <li><a class="share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)" target="_blank" title="Share on Facebook" onclick="return share(this)"><i class="fa fa-lg fa-facebook-square"></i></a></li>
                         <li><a class="share-twitter" href="https://twitter.com/intent/tweet?source=@helper.urlEncode(article.link)&text=@helper.urlEncode(article.title):%20@helper.urlEncode(article.link)" target="_blank" title="Tweet" onclick="return share(this)"><i class="fa fa-lg fa-twitter-square"></i></a></li>

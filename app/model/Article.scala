@@ -22,14 +22,10 @@ import scala.xml._
 /**
   *
   */
-class Article(val feed: Feed,
-              val title: String,
-              val link: String,
-              val commentsLink: Option[String],
-              val date: LocalDateTime,
-              val image: Option[URI],
-              val text: String)
-  extends Ordered[Article] {
+class Article(val feed: Feed, val title: String, val link: String, val commentsLink: Option[String],
+              val date: LocalDateTime, val image: Option[URI], val text: String) extends Ordered[Article] {
+  val maxSummaryLength = 250
+
   override def compare(that: Article): Int = -date.compareTo(that.date)
 
   def frecency(implicit timestamp: LocalDateTime): Double =
@@ -63,6 +59,17 @@ class Article(val feed: Feed,
     else "not yet"
   }
 
+  def croppedText: String = {
+    def crop(text: String, maxLength: Int): String = {
+      if (text.length > maxLength)
+        text.substring(0, maxLength) + "..."
+      else
+        text
+    }
+
+    crop(text, maxSummaryLength)
+  }
+
   def canEqual(other: Any): Boolean = other.isInstanceOf[Article]
 
   override def equals(other: Any): Boolean = other match {
@@ -76,8 +83,6 @@ class Article(val feed: Feed,
 }
 
 object Article {
-  val maxSummaryLength = 250
-
   def rss(feed: Feed, item: Node): Option[Article] = {
     val title = stripTitle(unescape(item \ "title"), feed)
     val link = unescapeOption(item \ "link")
@@ -106,13 +111,15 @@ object Article {
     val parsedDescription = parseHtmlContent(unescape(item \ "description"))
     val strippedDescription = stripDescription(parsedDescription, link get, feed.siteUrl)
     val maybeImgSrc = imageSource(strippedDescription, link get)
-    val strippedText = (strippedDescription text)
+    val strippedText = stripText(strippedDescription, title, feed)
+
+    dateOption.map(new Article(feed, title, link get, commentsLink, _, maybeImgSrc, strippedText))
+  }
+
+  def stripText(content: NodeSeq, title: String, feed: Feed): String = {
+    (content text)
       .replaceAll(" The post  appeared first on \\.$", "") // WIRED?
       .replaceAll(quote(s"$title is a post from ${feed.title}") + "$", "") // CSS-Tricks
-
-    val text = crop(strippedText, maxSummaryLength)
-
-    dateOption.map(new Article(feed, title, link get, commentsLink, _, maybeImgSrc, text))
   }
 
   def stripTitle(title: String, feed: Feed): String = {
@@ -146,11 +153,9 @@ object Article {
 
     val strippedDescription = stripDescription(parsedDescription, link, feed.siteUrl)
     val maybeImgSrc = imageSource(strippedDescription, link)
-    val strippedText = unescape(strippedDescription).replaceAll(" The post .* appeared first on .*\\.$", "")
+    val strippedText = stripText(strippedDescription, title, feed)
 
-    val text = crop(strippedText, maxSummaryLength)
-
-    Some(new Article(feed, title, link, commentsLink, date.left get, maybeImgSrc, text))
+    Some(new Article(feed, title, link, commentsLink, date.left get, maybeImgSrc, strippedText))
   }
 
   def tooSmall(img: Node): Boolean = {
@@ -205,13 +210,6 @@ object Article {
     if (nodes.size == 1 && nodes(0).isInstanceOf[Elem] && nodes(0).label != "a")
       enterSingleNode(nodes(0).asInstanceOf[Elem].child)
     else nodes
-  }
-
-  def crop(text: String, maxLength: Int): String = {
-    if (text.length > maxLength)
-      text.substring(0, maxLength) + "..."
-    else
-      text
   }
 
   def stripDescription(nodes: NodeSeq, selfLinks: String*): NodeSeq = {
