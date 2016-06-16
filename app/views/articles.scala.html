@@ -21,19 +21,18 @@
                 console.log("Loading: " + nextPageUrl)
             }
 
-            var content = $('.content')
-            var moreContent = $('.more-content')
+            var grid = $('.grid')
 
             $.ajax({ url: nextPageUrl + "&ajax=true" }).done(function(data) {
-                moreContent.html(data)
+                var newContent = $("<div>").append(data)
 
-                for (var i = 0; i < 2; i++) {
-                    content.find("> .col-md-6:eq("+i+")").append(moreContent.find("> .content > .col-md-6:eq("+i+") > .article"))
-                }
+                var newItems = newContent.find("> .grid > .grid-item")
+                grid.append(newItems).masonry('appended', newItems)
+                grid.imagesLoaded().progress( function() {
+                  grid.masonry('layout');
+                });
 
-                loadMore.replaceWith(moreContent.find("> .load-more"))
-
-                moreContent.empty()
+                loadMore.replaceWith(newContent.find("> .load-more"))
             });
         }
 
@@ -44,7 +43,7 @@
             win.scroll(function() {
                 // End of the document reached?
                 if ($(document).height() - win.height() < win.scrollTop() + 1000) {
-                    loadMore();
+//                    loadMore();
                 }
             });
         });
@@ -58,6 +57,12 @@
                     $(this).html(moment(new Date(Date.parse($(this).attr("date")))).fromNow())
                 });
             }, 60000)
+        });
+
+        // layout Masonry after each image loads
+        var $grid = $('.grid');
+        $grid.imagesLoaded().progress( function() {
+          $grid.masonry('layout');
         });
     </script>
 }

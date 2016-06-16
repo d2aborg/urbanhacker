@@ -3,49 +3,48 @@
 
 @(articles: Seq[Article], nextPage: Option[Int], timestamp: LocalDateTime)(implicit now: LocalDateTime)
 
-<div class="row content">
-    @for(column <- List(0, 1)) {
-        <div class="col-md-6">
-            @for(group <- articles grouped 2 if group.size > column; article <- List(group(column))) {
-                <div class='article'>
-                    <h4><a href="@article.link" class="title">@article.title</a></h4>
+<div class="row grid" data-masonry='{ "itemSelector": ".grid-item" }'>
+    @for(article <- articles) {
+        <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4 grid-item">
+            <div class='article'>
+                <h4><a href="@article.link" class="title">@article.title</a></h4>
 
-                    @article.image.map { img =>
-                        <div class="image">
-                            <a href="@article.link"><img src="@img" onload="imageLoaded(this)"/></a>
-                        </div>
+                @article.image.map { img =>
+                    <div class="image">
+                        <a href="@article.link"><img src="@img" onload="imageLoaded(this)"/></a>
+                    </div>
+                }
+
+                <p>@article.text</p>
+
+                <p>
+                    @if(article.feed.siteUrl.nonEmpty) {
+                        <a href="@article.feed.siteUrl" class="source">
+                            <img src="@article.feed.favicon" class="favicon" onerror="this.style.display='none'"/>
+                            @article.feed.title
+                        </a>
+                    } else { @article.feed.title }
+                    <span class="vbar">|</span>
+                    @article.commentsLink.map { commentsLink =>
+                        <a href="@commentsLink" class="comments">Comments &raquo;</a> <span class="vbar">|</span>
                     }
-
-                    <p>@article.text</p>
-
-                    <p>
-                        @if(article.feed.siteUrl.nonEmpty) {
-                            <a href="@article.feed.siteUrl" class="source">
-                                <img src="@article.feed.favicon" class="favicon" onerror="this.style.display='none'"/>
-                                @article.feed.title
-                            </a>
-                        } else { @article.feed.title }
-                        <span class="vbar">|</span>
-                        @article.commentsLink.map { commentsLink =>
-                            <a href="@commentsLink" class="comments">Comments &raquo;</a> <span class="vbar">|</span>
-                        }
-                        <a href="@article.link" class="source"><span class="since" date="@article.dateUTC">@article.since</span> &raquo;</a>
-                        <ul class="follow-buttons">
-                            <li><a class="follow-feed" href="@article.feed.feedUrl" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
-                        </ul>
-                        <ul class="share-buttons">
-                            <li><a class="share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)" target="_blank" title="Share on Facebook" onclick="return share(this)"><i class="fa fa-lg fa-facebook-square"></i></a></li>
-                            <li><a class="share-twitter" href="https://twitter.com/intent/tweet?source=@helper.urlEncode(article.link)&text=@helper.urlEncode(article.title):%20@helper.urlEncode(article.link)" target="_blank" title="Tweet" onclick="return share(this)"><i class="fa fa-lg fa-twitter-square"></i></a></li>
-                            <li><a class="share-googleplus" href="https://plus.google.com/share?url=@helper.urlEncode(article.link)" target="_blank" title="Share on Google+" onclick="return share(this)"><i class="fa fa-lg fa-google-plus-square"></i></a></li>
-                            <li><a class="share-tumblr" href="http://www.tumblr.com/share?v=3&u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)&s=" target="_blank" title="Post to Tumblr" onclick="return share(this)"><i class="fa fa-lg fa-tumblr-square"></i></a></li>
-                            <li><a class="share-pinterest" href="http://pinterest.com/pin/create/button/?url=@helper.urlEncode(article.link)&description=@helper.urlEncode(article.title)" target="_blank" title="Pin it" onclick="return share(this)"><i class="fa fa-lg fa-pinterest-square"></i></a></li>
-                            <li><a class="share-reddit" href="http://www.reddit.com/submit?url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)" target="_blank" title="Submit to Reddit" onclick="return share(this)"><i class="fa fa-lg fa-reddit-square"></i></a></li>
-                            <li><a class="share-linkedin" href="http://www.linkedin.com/shareArticle?mini=true&url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)&summary=@helper.urlEncode(article.title)&source=@helper.urlEncode(article.link)" target="_blank" title="Share on LinkedIn" onclick="return share(this)"><i class="fa fa-lg fa-linkedin-square"></i></a></li>
-                            <li><a class="share-email" href="mailto:?subject=@article.title&body=@article.title: @helper.urlEncode(article.link)" title="Email"><i class="fa fa-lg fa-envelope-square"></i></a></li>
-                        </ul>
-                    </p>
-                </div>
-            }
+                    <a href="@article.link" class="source"><span class="since" date="@article.dateUTC">@article.since</span> &raquo;</a>
+                    <ul class="follow-buttons">
+                        <li><a class="follow-feed" href="@article.feed.feedUrl" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
+                    </ul>
+                    <ul class="share-buttons">
+                        <li><a class="share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)" target="_blank" title="Share on Facebook" onclick="return share(this)"><i class="fa fa-lg fa-facebook-square"></i></a></li>
+                        <li><a class="share-twitter" href="https://twitter.com/intent/tweet?source=@helper.urlEncode(article.link)&text=@helper.urlEncode(article.title):%20@helper.urlEncode(article.link)" target="_blank" title="Tweet" onclick="return share(this)"><i class="fa fa-lg fa-twitter-square"></i></a></li>
+                        <li><a class="share-googleplus" href="https://plus.google.com/share?url=@helper.urlEncode(article.link)" target="_blank" title="Share on Google+" onclick="return share(this)"><i class="fa fa-lg fa-google-plus-square"></i></a></li>
+                        <li><a class="share-tumblr" href="http://www.tumblr.com/share?v=3&u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)&s=" target="_blank" title="Post to Tumblr" onclick="return share(this)"><i class="fa fa-lg fa-tumblr-square"></i></a></li>
+                        <li><a class="share-pinterest" href="http://pinterest.com/pin/create/button/?url=@helper.urlEncode(article.link)&description=@helper.urlEncode(article.title)" target="_blank" title="Pin it" onclick="return share(this)"><i class="fa fa-lg fa-pinterest-square"></i></a></li>
+                        <li><a class="share-reddit" href="http://www.reddit.com/submit?url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)" target="_blank" title="Submit to Reddit" onclick="return share(this)"><i class="fa fa-lg fa-reddit-square"></i></a></li>
+                        <li><a class="share-linkedin" href="http://www.linkedin.com/shareArticle?mini=true&url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)&summary=@helper.urlEncode(article.title)&source=@helper.urlEncode(article.link)" target="_blank" title="Share on LinkedIn" onclick="return share(this)"><i class="fa fa-lg fa-linkedin-square"></i></a></li>
+                        <li><a class="share-email" href="mailto:?subject=@article.title&body=@article.title: @helper.urlEncode(article.link)" title="Email"><i class="fa fa-lg fa-envelope-square"></i></a></li>
+                        &nbsp;
+                    </ul>
+                </p>
+            </div>
         </div>
     }
 </div>

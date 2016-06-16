@@ -205,14 +205,14 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
   }
 
   def save(download: Download): Boolean = {
-    if (!directory.isDirectory)
-      return true
-
     if (download.previous.map(_.metaData.checksum).contains(download.metaData.checksum))
       return false
 
     if (download.previous.map(_.feed).contains(download.feed))
       return false
+
+    if (!directory.isDirectory)
+      return true
 
     try {
       val targetFile = file(download.source.feedUrl, download.timestamp)

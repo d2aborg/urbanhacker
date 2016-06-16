@@ -47,12 +47,10 @@
                 <li role="presentation" class='@if(section == "About") {active}'><a href="/about">About</a></li>
             </ul>
         </nav>
-        <h1><a href="/">( Urban Hacker )</a></h1>
+        <h1><a href="/"><span class="text-nowrap">( Urban Hacker )</span></a></h1>
     </div>
 
     @content
-
-    <hr />
 
     <div class="footer">
         <p>&copy; <a href="http://d2ab.org">Daniel Skogquist Åborg</a> 2016</p>
@@ -77,6 +75,12 @@
 
 <!-- MomentJS -->
 <script src='@routes.Assets.versioned("javascripts/moment.min.js")' type="text/javascript"></script>
+
+<!-- ImagesLoaded -->
+<script src="https://npmcdn.com/imagesloaded@@4.1/imagesloaded.pkgd.min.js"></script>
+
+<!-- Masonry -->
+<script src="https://npmcdn.com/masonry-layout@@4.0/dist/masonry.pkgd.min.js"></script>
 
 <!-- App JS -->
 <script src='@routes.Assets.versioned("javascripts/app.js")' type="text/javascript"></script>
