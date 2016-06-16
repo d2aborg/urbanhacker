@@ -38,6 +38,7 @@ http://flyingfrogblog.blogspot.com/feeds/posts/default
 http://rerun.me/rss/
 https://javax0.wordpress.com/feed/
 http://feeds.feedburner.com/softwarecraft
+https://scotch.io/feed
 
 # Organisation Blogs
 http://www.javaworld.com/blog/cool-tools-jw/index.rss
@@ -68,6 +69,7 @@ http://blog.scalac.io/feeds/index.xml
 http://techblog.netflix.com/feeds/posts/default
 http://feeds.feedburner.com/alistapart/main
 http://feeds.feedburner.com/CssTricks
+https://blog.twitter.com/api/blog.rss?name=engineering
 
 # Tool Blogs
 http://blog.jquery.com/feed/

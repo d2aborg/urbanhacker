@@ -7,31 +7,30 @@
     @for(article <- articles) {
         <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4 grid-item">
             <div class='article'>
-                <h4><a href="@article.link" class="title">@article.title</a></h4>
+                <h4><a href="@article.link" class="title" target="_blank">@article.title</a></h4>
 
                 @article.image.map { img =>
                     <div class="image">
-                        <a href="@article.link"><img src="@img" onload="imageLoaded(this)"/></a>
+                        <a href="@article.link" target="_blank"><img src="@img" onload="imageLoaded(this)"/></a>
                     </div>
                 }
 
-                <p>@article.croppedText <a href="@article.link" class="source">&raquo;</a></p>
+                @if(article.croppedText.nonEmpty) {
+                    <p>@article.croppedText <a href="@article.link" class="source" target="_blank">&raquo;</a></p>
+                }
 
                 <p>
                     @if(article.feed.siteUrl.nonEmpty) {
-                        <a href="@article.feed.siteUrl" class="source">
+                        <a href="@article.feed.siteUrl" class="source" target="_blank">
                             <img src="@article.feed.favicon" class="favicon" onerror="this.style.display='none'"/>
                             @article.feed.title
                         </a>
                     } else { @article.feed.title }
 
-                    @article.commentsLink.map { commentsLink =>
-                        <span class="vbar">|</span>
-                        <a href="@commentsLink" class="comments text-nowrap">Comments &raquo;</a>
-                    }
-
                     <span class="vbar">|</span>
-                    <a href="@article.link" class="source text-nowrap"><span class="since" date="@article.dateUTC">@article.since</span> &raquo;</a>
+                    <a href="@article.link" class="source text-nowrap" target="_blank">
+                        <span class="since" date="@article.dateUTC">@article.since</span> &raquo;
+                    </a>
 
                     <ul class="follow-buttons">
                         <li><a class="follow-feed" href="@article.feed.feedUrl" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
