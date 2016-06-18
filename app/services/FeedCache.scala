@@ -6,11 +6,13 @@ import java.security.cert.X509Certificate
 import java.security.{MessageDigest, SecureRandom}
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
+import java.time.temporal.ChronoUnit
 import java.time.{LocalDateTime, ZoneOffset}
 import java.util.regex.{Matcher, Pattern}
 import javax.net.ssl._
 
 import com.google.inject.{Inject, Singleton}
+import model.Utils._
 import model.{Article, Feed}
 import play.api.Logger
 
@@ -49,7 +51,9 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
   val ctx = SSLContext.getInstance("TLS")
   ctx.init(Array[KeyManager](), Array[TrustManager](new X509TrustManager {
     override def checkClientTrusted(arg0: Array[X509Certificate], arg1: String): Unit = ()
+
     override def checkServerTrusted(arg0: Array[X509Certificate], arg1: String): Unit = ()
+
     override def getAcceptedIssuers: Array[X509Certificate] = null
   }), new SecureRandom())
   SSLContext.setDefault(ctx)
@@ -64,9 +68,21 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     mutable.Map((for (section <- sections)
       yield (section, mutable.Map(loadChains(section).map(_.byFeedUrl): _*))): _*)
 
-  def apply(section: String, timestamp: LocalDateTime): Seq[Article] = cache synchronized {
-    cache(section).values.flatMap(_.articles(timestamp)).toSeq
+  def articlesPerSecond(articles: SortedSet[Article]): Double = {
+    val mostRecent = articles take 10
+    val secondsBetween = ChronoUnit.SECONDS.between(mostRecent.last.date, mostRecent.head.date)
+    mostRecent.size.toDouble / secondsBetween
   }
+
+  def apply(section: String, timestamp: LocalDateTime): Seq[(Article, Double)] =
+    cache synchronized {
+      cache(section) values
+    }.groupBy(_.source.group).values.map {
+      _.flatMap(_.articles(timestamp)).toSet[Article].to[SortedSet]
+    }.flatMap { articleGroup =>
+      val articleGroupArticlesPerSecond = articlesPerSecond(articleGroup)
+      articleGroup.toSeq.map(article => (article, articleGroupArticlesPerSecond))
+    }.toSeq.sorted(Ordering.by[(Article, Double), Article](_._1))
 
   def latest(section: String, source: FeedSource): Option[Download] = cache synchronized {
     cache(section) get source.feedUrl
@@ -142,9 +158,10 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
       .map(_.trim)
       .filterNot(line => line.startsWith("#") || line.isEmpty) map { line =>
       line.split("\\|") match {
-        case Array(feedUrl) => FeedSource(feedUrl, None, None)
-        case Array(feedUrl, siteUrl) => FeedSource(feedUrl, Some(siteUrl).filter(_.nonEmpty), None)
-        case Array(feedUrl, siteUrl, title) => FeedSource(feedUrl, Some(siteUrl).filter(_.nonEmpty), Some(title).filter(_.nonEmpty))
+        case Array(feedUrl) => FeedSource(feedUrl, feedUrl)
+        case Array(feedUrl, group) => FeedSource(feedUrl, nonEmpty(group, feedUrl))
+        case Array(feedUrl, group, siteUrl) => FeedSource(feedUrl, nonEmpty(group, feedUrl), nonEmpty(siteUrl))
+        case Array(feedUrl, group, siteUrl, title) => FeedSource(feedUrl, nonEmpty(group, feedUrl), nonEmpty(siteUrl), nonEmpty(title))
       }
     } toSeq
 
@@ -303,4 +320,4 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
   def mkLogMsg(msg: String, url: String): String = msg + ": " + shortUrl(url)
 }
 
-case class FeedSource(feedUrl: String, siteUrl: Option[String], title: Option[String])
+case class FeedSource(feedUrl: String, group: String, siteUrl: Option[String] = None, title: Option[String] = None)

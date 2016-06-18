@@ -3,7 +3,7 @@ package model
 import java.net.URI
 import java.time.temporal.ChronoUnit
 
-import model.FeedContent.unescape
+import model.Utils.unescape
 import play.api.Logger
 import services.FeedSource
 

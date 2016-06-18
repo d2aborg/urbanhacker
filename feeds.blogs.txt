@@ -39,6 +39,10 @@ http://rerun.me/rss/
 https://javax0.wordpress.com/feed/
 http://feeds.feedburner.com/softwarecraft
 https://scotch.io/feed
+http://joelgrus.com/feeds/atom.xml
+http://melix.github.io/blog/
+http://jvns.ca/atom.xml
+https://medium.com/feed/@swizec
 
 # Organisation Blogs
 http://www.javaworld.com/blog/cool-tools-jw/index.rss
@@ -85,8 +89,8 @@ https://articles.fortawesome.com/feed
 https://blog.creativecommons.org/feed/
 https://github.com/blog.atom
 https://www.jetbrains.com/rss.xml
-http://feeds2.feedburner.com/heroku|https://blog.heroku.com/
+http://feeds2.feedburner.com/heroku||https://blog.heroku.com/
 https://blog.docker.com/feed/
-http://www.scala-lang.org/feed/blog.xml||The Scala Language
+http://www.scala-lang.org/feed/blog.xml|||The Scala Language
 https://blogs.apache.org/foundation/feed/entries/atom
 http://gradle.org/feed/

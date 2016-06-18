@@ -8,16 +8,15 @@ import java.time.temporal.ChronoField._
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDateTime, _}
 import java.util.Locale
-import java.util.regex.Pattern
 import java.util.regex.Pattern.quote
 
-import model.FeedContent.{unescape, unescapeOption}
+import model.Utils.{nonEmpty, unescape, unescapeOption}
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
 
 import scala.math.max
-import scala.xml.parsing.NoBindingFactoryAdapter
 import scala.xml._
+import scala.xml.parsing.NoBindingFactoryAdapter
 
 /**
   *
@@ -28,8 +27,8 @@ class Article(val feed: Feed, val title: String, val link: String, val commentsL
 
   override def compare(that: Article): Int = -date.compareTo(that.date)
 
-  def frecency(implicit timestamp: LocalDateTime): Double =
-    Math.pow(ageSeconds, 2) * feed.articlesPerSecond
+  def frecency(articlesPerSecond: Double, timestamp: LocalDateTime): Double =
+    Math.pow(ageSeconds(timestamp), 2) * articlesPerSecond
 
   def ageSeconds(implicit timestamp: LocalDateTime): Long =
     ChronoUnit.SECONDS.between(date, timestamp)
@@ -140,8 +139,7 @@ object Article {
       Logger.warn("Failed to parse feed entry link from: " + (entry \ "link"))
       return None
     }
-    val commentsLink = Some((entry \ "link").filter(n => n \@ "rel" == "replies" && n \@ "type" == "text/html") \@ "href")
-      .filter(_.nonEmpty)
+    val commentsLink = nonEmpty((entry \ "link").filter(n => n \@ "rel" == "replies" && n \@ "type" == "text/html") \@ "href")
 
     val date = parseInternetDate(unescape(entry \ "updated"))
     if (date.isRight) {

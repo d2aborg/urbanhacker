@@ -10,8 +10,8 @@ import play.api.inject.ApplicationLifecycle
 import play.api.mvc._
 import services.FeedCache
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
   * This controller creates an `Action` to handle HTTP requests to the
@@ -52,7 +52,7 @@ class HomeController @Inject()(actorSystem: ActorSystem, feedCache: FeedCache, l
     val pageNum = request.getQueryString("page").map(_.toInt).getOrElse(1)
     val timestamp = request.getQueryString("timestamp").map(LocalDateTime parse).getOrElse(now)
 
-    val (articlesByFrecency, nextPage) = page(section, pageNum, timestamp)
+    val (articlesByFrecency, nextPage) = pageByFrecency(section, pageNum, timestamp)
 
     if (request.getQueryString("ajax") isEmpty)
       Ok(views.html.articles(title, articlesByFrecency, nextPage, timestamp))
@@ -60,19 +60,14 @@ class HomeController @Inject()(actorSystem: ActorSystem, feedCache: FeedCache, l
       Ok(views.html.page(articlesByFrecency, nextPage, timestamp))
   }
 
-  def page(section: String, pageNum: Int, timestamp: LocalDateTime): (Seq[Article], Option[Int]) = {
+  def pageByFrecency(section: String, pageNum: Int, timestamp: LocalDateTime): (Seq[Article], Option[Int]) = {
     val articles = feedCache(section, timestamp)
-    val (byFrecency, hasMore) = pageByFrecency(articles, pageNum, timestamp)
+    val (pageByFrecency, hasMore) = page(byFrecency(articles, timestamp), pageNum)
     val nextPage = if (hasMore) Some(pageNum + 1) else None
-    (byFrecency, nextPage)
+    (pageByFrecency, nextPage)
   }
 
-  def pageByFrecency(articles: Seq[Article], pageNum: Int, timestamp: LocalDateTime): (Seq[Article], Boolean) = {
-    val all = byFrecency(articles, timestamp)
-    page(all, pageNum)
-  }
-
-  private val pageSize: Int = 30
+  private val pageSize = 30
 
   def page(all: Seq[Article], pageNum: Int): (Seq[Article], Boolean) = {
     val from = (pageNum - 1) * pageSize
@@ -80,9 +75,9 @@ class HomeController @Inject()(actorSystem: ActorSystem, feedCache: FeedCache, l
     (all.slice(from, until), all.size > until)
   }
 
-  def byFrecency(articles: Seq[Article], timestamp: LocalDateTime): Seq[Article] = {
-    val ordering = Ordering.by[Article, Double](_.frecency(timestamp))
-    val sorted = articles.sorted(ordering)
-    sorted
+  def byFrecency(articles: Seq[(Article, Double)], timestamp: LocalDateTime): Seq[Article] = {
+    articles.sorted(Ordering.by[(Article, Double), Double] { articleAndFrequency =>
+      articleAndFrequency._1.frecency(articleAndFrequency._2, timestamp)
+    }).map(_._1)
   }
 }
