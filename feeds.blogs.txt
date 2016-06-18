@@ -30,7 +30,7 @@ https://infrequently.org/feed/
 https://trib.tv/feed/
 https://www.kryogenix.org/days/feed
 http://justmarkup.com/log/feed/
-http://alvinalexander.com/rss.xml||Alvin Alexander
+http://alvinalexander.com/rss.xml|||Alvin Alexander
 http://dcsobral.blogspot.com/feeds/posts/default
 https://labs.spotify.com/feed/
 http://perevillega.com/feed.xml
