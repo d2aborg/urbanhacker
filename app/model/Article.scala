@@ -141,8 +141,8 @@ object Article {
   }
 
   def stripText(content: NodeSeq, title: String, feed: Feed): String = {
-    (content text)
-      .replaceAll(" The post  appeared first on \\.$", "") // WIRED?
+    content.text.trim.replaceAll("\\s+", " ")
+      .replaceAll(quote(s" The post $title appeared first on ${feed.title}.") + "$", "") // WIRED
       .replaceAll(quote(s"$title is a post from ${feed.title}") + "$", "") // CSS-Tricks
   }
 
@@ -246,7 +246,6 @@ object Article {
         n.label == "a" && (n text) == "Read More" ||
         n.label == "a" && (n text) == "Comments" ||
         n.label == "a" && (n text) == "Read more..." ||
-        n.label == "a" && selfLinks.contains(n \@ "href") ||
         n.label == "p" && (n \ "a" text) == "Read more..." ||
         n.label == "p" && (n \ "a" text) == "Read more of this story" ||
         n.label == "p" && (n \@ "class" == "medium-feed-link") ||

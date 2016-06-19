@@ -40,7 +40,6 @@ https://scotch.io/feed
 http://joelgrus.com/feeds/atom.xml
 http://melix.github.io/blog/
 http://jvns.ca/atom.xml
-https://medium.com/feed/@swizec
 https://josipbakic.wordpress.com/feed/
 
 # Organisation Blogs
