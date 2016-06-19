@@ -7,9 +7,15 @@ import java.time.format._
 import java.time.temporal.ChronoField._
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDateTime, _}
-import java.util.Locale
 import java.util.regex.Pattern.quote
+import java.util.{Locale}
 
+import com.google.common.base.Optional
+import com.optimaize.langdetect.i18n.LdLocale
+import com.optimaize.langdetect.ngram.NgramExtractors
+import com.optimaize.langdetect.profiles.LanguageProfileReader
+import com.optimaize.langdetect.text.{CommonTextObjectFactories, TextObject, TextObjectFactory}
+import com.optimaize.langdetect.{LanguageDetector, LanguageDetectorBuilder}
 import model.Utils.{nonEmpty, unescape, unescapeOption}
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
@@ -83,6 +89,22 @@ class Article(val feed: Feed, val title: String, val link: String, val commentsL
 }
 
 object Article {
+  //build language detector:
+  val languageDetector: LanguageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard)
+    .withProfiles(new LanguageProfileReader().readAllBuiltIn)
+    .build
+
+  //create a text object factory
+  val textObjectFactory: TextObjectFactory = CommonTextObjectFactories.forDetectingShortCleanText()
+
+  def isEnglish(article: Article): Boolean = {
+    article.text.isEmpty || {
+      val text = article.title + ": " + article.text
+      val lang = languageDetector.detect(textObjectFactory.forText(text))
+      !lang.isPresent || lang.asSet.contains(LdLocale.fromString("en"))
+    }
+  }
+
   def uniqueSorted(articles: Iterable[Article]): SortedSet[Article] = articles.toSet[Article].to[SortedSet]
 
   def rss(feed: Feed, item: Node): Option[Article] = {
@@ -115,7 +137,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link get)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    dateOption.map(new Article(feed, title, link get, commentsLink, _, maybeImgSrc, strippedText))
+    dateOption.map(new Article(feed, title, link get, commentsLink, _, maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def stripText(content: NodeSeq, title: String, feed: Feed): String = {
@@ -156,7 +178,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    Some(new Article(feed, title, link, commentsLink, date.left get, maybeImgSrc, strippedText))
+    Some(new Article(feed, title, link, commentsLink, date.left get, maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def tooSmall(img: Node): Boolean = {
