@@ -25,12 +25,10 @@ http://feeds.feedburner.com/planningforaliens
 https://zedshaw.com/feed/
 http://feeds.feedburner.com/html5rocks
 https://jakearchibald.com/posts.rss
-https://adactio.com/rss/
 https://infrequently.org/feed/
 https://trib.tv/feed/
 https://www.kryogenix.org/days/feed
 http://justmarkup.com/log/feed/
-http://alvinalexander.com/rss.xml|||Alvin Alexander
 http://dcsobral.blogspot.com/feeds/posts/default
 https://labs.spotify.com/feed/
 http://perevillega.com/feed.xml

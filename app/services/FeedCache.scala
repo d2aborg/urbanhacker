@@ -35,12 +35,16 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
                       previous: Option[Download]) {
     def byFeedUrl: (String, Download) = source.feedUrl -> this
 
-    def articles(timestamp: LocalDateTime = LocalDateTime.now): SortedSet[Article] = {
-      val myArticles = if (olderThan(timestamp)) feed.articles else SortedSet[Article]()
-      val previousArticles = previous.map(_.articles(timestamp)).getOrElse(SortedSet[Article]())
+    def articles: SortedSet[Article] = Article.uniqueSorted(allArticles)
 
-      (myArticles ++ previousArticles).toSet[Article].to[SortedSet]
-    }
+    def allArticles: SortedSet[Article] =
+      feed.articles ++ previous.map(_.allArticles).getOrElse(Nil)
+
+    def latestBefore(timestamp: LocalDateTime): Option[Download] =
+      if (olderThan(timestamp))
+        Some(this)
+      else
+        previous.flatMap(_.latestBefore(timestamp))
 
     def olderThan(timestamp: LocalDateTime): Boolean = timestamp.compareTo(timestamp) <= 0
   }
@@ -68,21 +72,29 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     mutable.Map((for (section <- sections)
       yield (section, mutable.Map(loadChains(section).map(_.byFeedUrl): _*))): _*)
 
-  def articlesPerSecond(articles: SortedSet[Article]): Double = {
+  def frequency(articles: SortedSet[Article], timestamp: LocalDateTime): Double = {
     val mostRecent = articles take 10
-    val secondsBetween = ChronoUnit.SECONDS.between(mostRecent.last.date, mostRecent.head.date)
-    mostRecent.size.toDouble / secondsBetween
+    val ranges = (timestamp +: mostRecent.map(_.date).toSeq).sliding(2)
+    val periods = ranges.map(range => ChronoUnit.SECONDS.between(range.last, range.head))
+    val weights = (1 to mostRecent.size).map(1.0 / _)
+    val weightedPeriods = for ((period, weight) <- periods.zip(weights.iterator)) yield period * weight
+    val weightedAveragePeriod = weightedPeriods.sum / weights.sum
+    1.0 / weightedAveragePeriod
   }
 
-  def apply(section: String, timestamp: LocalDateTime): Seq[(Article, Double)] =
+  def apply(section: String, timestamp: LocalDateTime): Seq[Article] =
     cache synchronized {
       cache(section) values
     }.groupBy(_.source.group).values.map {
-      _.flatMap(_.articles(timestamp)).toSet[Article].to[SortedSet]
+      _.flatMap(_.latestBefore(timestamp))
+    }.map { downloadGroup =>
+      Article.uniqueSorted(downloadGroup.flatMap(_.articles))
+    }.filter {
+      _.nonEmpty
     }.flatMap { articleGroup =>
-      val articleGroupArticlesPerSecond = articlesPerSecond(articleGroup)
-      articleGroup.toSeq.map(article => (article, articleGroupArticlesPerSecond))
-    }.toSeq.sorted(Ordering.by[(Article, Double), Article](_._1))
+      val groupFrequency = frequency(articleGroup, timestamp)
+      articleGroup.toSeq.map(article => (article.frecency(groupFrequency, timestamp), article))
+    }.toSeq.sorted(Ordering.by[(Double, Article), Double](_._1)).map { _._2 }
 
   def latest(section: String, source: FeedSource): Option[Download] = cache synchronized {
     cache(section) get source.feedUrl
@@ -134,7 +146,7 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     files(source.feedUrl).foldLeft(None: Option[Download]) { (previous, file) =>
       load(source, file, previous)
     } map { download =>
-      logInfo("Loaded " + download.articles().size + " from disk", source.feedUrl)
+      logInfo("Loaded " + download.articles.size + " from disk", source.feedUrl)
       download
     }
   }

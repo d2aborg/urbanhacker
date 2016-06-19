@@ -32,20 +32,20 @@ object Feed {
     val rssChannel = root \\ "channel"
     if (rssChannel.nonEmpty) {
       val feed = Feed.rss(source, rssChannel(0))
-      feed.articles = {
+      feed.articles = Article.uniqueSorted({
         for (item <- root \\ "item")
           yield Article.rss(feed, item(0))
-      }.flatten.to[Set].to[SortedSet]
+      }.flatten)
       return Some(feed)
     }
 
     if (root.label == "feed") {
       val atomFeedElem = root
       val feed = Feed.atom(source, atomFeedElem(0))
-      feed.articles = {
+      feed.articles = Article.uniqueSorted({
         for (entry <- root \\ "entry")
           yield Article.atom(feed, entry(0))
-      }.flatten.to[Set].to[SortedSet]
+      }.flatten)
       return Some(feed)
     }
 

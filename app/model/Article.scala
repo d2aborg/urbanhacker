@@ -14,6 +14,7 @@ import model.Utils.{nonEmpty, unescape, unescapeOption}
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
 
+import scala.collection.SortedSet
 import scala.math.max
 import scala.xml._
 import scala.xml.parsing.NoBindingFactoryAdapter
@@ -27,10 +28,10 @@ class Article(val feed: Feed, val title: String, val link: String, val commentsL
 
   override def compare(that: Article): Int = -date.compareTo(that.date)
 
-  def frecency(articlesPerSecond: Double, timestamp: LocalDateTime): Double =
-    Math.pow(ageSeconds(timestamp), 2) * articlesPerSecond
+  def frecency(frequency: Double, timestamp: LocalDateTime): Double =
+    Math.pow(age(timestamp), 2) * frequency
 
-  def ageSeconds(implicit timestamp: LocalDateTime): Long =
+  def age(timestamp: LocalDateTime): Long =
     ChronoUnit.SECONDS.between(date, timestamp)
 
   def dateUTC = date.atZone(ZoneId.systemDefault).toOffsetDateTime
@@ -82,6 +83,8 @@ class Article(val feed: Feed, val title: String, val link: String, val commentsL
 }
 
 object Article {
+  def uniqueSorted(articles: Iterable[Article]): SortedSet[Article] = articles.toSet[Article].to[SortedSet]
+
   def rss(feed: Feed, item: Node): Option[Article] = {
     val title = stripTitle(unescape(item \ "title"), feed)
     val link = unescapeOption(item \ "link")

@@ -52,32 +52,26 @@ class HomeController @Inject()(actorSystem: ActorSystem, feedCache: FeedCache, l
     val pageNum = request.getQueryString("page").map(_.toInt).getOrElse(1)
     val timestamp = request.getQueryString("timestamp").map(LocalDateTime parse).getOrElse(now)
 
-    val (articlesByFrecency, nextPage) = pageByFrecency(section, pageNum, timestamp)
+    val (articles, nextPage) = pageAndNextPage(section, pageNum, timestamp)
 
     if (request.getQueryString("ajax") isEmpty)
-      Ok(views.html.articles(title, articlesByFrecency, nextPage, timestamp))
+      Ok(views.html.articles(title, articles, nextPage, timestamp))
     else
-      Ok(views.html.page(articlesByFrecency, nextPage, timestamp))
+      Ok(views.html.page(articles, nextPage, timestamp))
   }
 
-  def pageByFrecency(section: String, pageNum: Int, timestamp: LocalDateTime): (Seq[Article], Option[Int]) = {
+  def pageAndNextPage(section: String, pageNum: Int, timestamp: LocalDateTime): (Seq[Article], Option[Int]) = {
     val articles = feedCache(section, timestamp)
-    val (pageByFrecency, hasMore) = page(byFrecency(articles, timestamp), pageNum)
+    val (page, hasMore) = pageAndHasMore(articles, pageNum)
     val nextPage = if (hasMore) Some(pageNum + 1) else None
-    (pageByFrecency, nextPage)
+    (page, nextPage)
   }
 
   private val pageSize = 30
 
-  def page(all: Seq[Article], pageNum: Int): (Seq[Article], Boolean) = {
+  def pageAndHasMore(all: Seq[Article], pageNum: Int): (Seq[Article], Boolean) = {
     val from = (pageNum - 1) * pageSize
     val until = pageNum * pageSize
     (all.slice(from, until), all.size > until)
-  }
-
-  def byFrecency(articles: Seq[(Article, Double)], timestamp: LocalDateTime): Seq[Article] = {
-    articles.sorted(Ordering.by[(Article, Double), Double] { articleAndFrequency =>
-      articleAndFrequency._1.frecency(articleAndFrequency._2, timestamp)
-    }).map(_._1)
   }
 }

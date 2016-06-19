@@ -1,6 +1,7 @@
 http://rss.slashdot.org/Slashdot/slashdotMainatom
 http://feeds.feedburner.com/TechCrunch/
-http://feeds.gawker.com/lifehacker/full
+http://feeds.gawker.com/lifehacker/full|gawker
+http://feeds.gawker.com/gizmodo/full|gawker
 http://www.wired.com/feed/
 https://news.ycombinator.com/rss
 http://digg.com/channel/technology.rss
@@ -9,7 +10,6 @@ http://feeds.mashable.com/Mashable
 http://feeds.dzone.com/home
 https://www.infoq.com/feed
 http://www.cnet.com/rss/all/
-http://feeds.gawker.com/gizmodo/full
 http://www.engadget.com/rss.xml
 http://www.techmeme.com/feed.xml
 http://www.pulseheadlines.com/headlines/technology/feed/
