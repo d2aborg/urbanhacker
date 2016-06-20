@@ -40,13 +40,13 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     def allArticles: SortedSet[Article] =
       feed.articles ++ previous.map(_.allArticles).getOrElse(Nil)
 
-    def latestBefore(timestamp: LocalDateTime): Option[Download] =
-      if (olderThan(timestamp))
-        Some(this)
+    def latestAt(timestamp: LocalDateTime): Option[Download] =
+      if (newerThan(timestamp))
+        previous.flatMap(_.latestAt(timestamp))
       else
-        previous.flatMap(_.latestBefore(timestamp))
+        Some(this)
 
-    def olderThan(timestamp: LocalDateTime): Boolean = timestamp.compareTo(timestamp) <= 0
+    def newerThan(timestamp: LocalDateTime): Boolean = this.timestamp.isAfter(timestamp)
   }
 
   case class MetaData(lastModified: Option[String], eTag: Option[String], checksum: String)
@@ -86,7 +86,7 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     cache synchronized {
       cache(section) values
     }.groupBy(_.source.group).values.map {
-      _.flatMap(_.latestBefore(timestamp))
+      _.flatMap(_.latestAt(timestamp))
     }.map { downloadGroup =>
       Article.uniqueSorted(downloadGroup.flatMap(_.articles))
     }.filter {
