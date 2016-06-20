@@ -35,7 +35,7 @@ class Article(val feed: Feed, val title: String, val link: String, val commentsL
   override def compare(that: Article): Int = -date.compareTo(that.date)
 
   def frecency(frequency: Double, timestamp: LocalDateTime): Double =
-    Math.pow(age(timestamp), 2) * frequency
+    Math.pow(age(timestamp), 4) * frequency
 
   def age(timestamp: LocalDateTime): Long =
     ChronoUnit.SECONDS.between(date, timestamp)
