@@ -48,18 +48,31 @@
     </script>
 <body>
 
+<!-- Fixed navbar -->
+<nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">Urban Hacker</a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav navbar-right">
+                <li class='@if(section == "News") {active}'><a href="/">News</a></li>
+                <li class='@if(section == "Blogs") {active}'><a href="/blogs">Blogs</a></li>
+                <li class='@if(section == "About") {active}'><a href="/about">About</a></li>
+            </ul>
+        </div><!--/.nav-collapse -->
+    </div>
+</nav>
+
 <div class="container">
 
-    <div class="header clearfix">
-        <h1 class="pull-left"><a href="/"><span class="text-nowrap">( Urban Hacker )</span></a></h1>
-        <nav>
-            <ul class="nav nav-pills pull-right">
-                <li role="presentation" class='@if(section == "News") {active}'><a href="/">News</a></li>
-                <li role="presentation" class='@if(section == "Blogs") {active}'><a href="/blogs">Blogs</a></li>
-                <li role="presentation" class='@if(section == "About") {active}'><a href="/about">About</a></li>
-            </ul>
-        </nav>
-    </div>
+    <h1><a href="/"><span class="text-nowrap">( Urban Hacker )</span></a></h1>
 
     @content
 

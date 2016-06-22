@@ -7,14 +7,13 @@ import java.time.format._
 import java.time.temporal.ChronoField._
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDateTime, _}
+import java.util.Locale
 import java.util.regex.Pattern.quote
-import java.util.{Locale}
 
-import com.google.common.base.Optional
 import com.optimaize.langdetect.i18n.LdLocale
 import com.optimaize.langdetect.ngram.NgramExtractors
 import com.optimaize.langdetect.profiles.LanguageProfileReader
-import com.optimaize.langdetect.text.{CommonTextObjectFactories, TextObject, TextObjectFactory}
+import com.optimaize.langdetect.text.{CommonTextObjectFactories, TextObjectFactory}
 import com.optimaize.langdetect.{LanguageDetector, LanguageDetectorBuilder}
 import model.Utils.{nonEmpty, unescape, unescapeOption}
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
