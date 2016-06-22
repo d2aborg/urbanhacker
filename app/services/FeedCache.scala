@@ -28,7 +28,6 @@ import scala.xml.{Elem, XML}
 class FeedCache @Inject()(implicit exec: ExecutionContext) {
 
   case class Download(source: FeedSource,
-                      xml: Elem,
                       feed: Feed,
                       metaData: MetaData,
                       timestamp: LocalDateTime,
@@ -94,7 +93,9 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     }.flatMap { articleGroup =>
       val groupFrequency = frequency(articleGroup, timestamp)
       articleGroup.toSeq.map(article => (article.frecency(groupFrequency, timestamp), article))
-    }.toSeq.sorted(Ordering.by[(Double, Article), Double](_._1)).map { _._2 }
+    }.toSeq.sorted(Ordering.by[(Double, Article), Double](_._1)).map {
+      _._2
+    }
 
   def latest(section: String, source: FeedSource): Option[Download] = cache synchronized {
     cache(section) get source.feedUrl
@@ -221,7 +222,7 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
         Option(connection getHeaderField "ETag"),
         md5(xml.mkString))
 
-      parse(source, xml, metaData, timestamp, previous).filter(save)
+      parse(source, xml, metaData, timestamp, previous).filter(download => save(xml, download))
     } catch {
       case e: Exception =>
         logWarn("Failed to download", source.feedUrl, e)
@@ -230,10 +231,12 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
   }
 
   def parse(source: FeedSource, xml: Elem, metaData: MetaData, timestamp: LocalDateTime, previous: Option[Download]): Option[Download] = {
-    Feed.parse(source, xml).map(Download(source, xml, _, metaData, timestamp, previous))
+    Feed.parse(source, xml).map {
+      Download(source, _, metaData, timestamp, previous)
+    }
   }
 
-  def save(download: Download): Boolean = {
+  def save(xml: Elem, download: Download): Boolean = {
     if (download.previous.map(_.metaData.checksum).contains(download.metaData.checksum))
       return false
 
@@ -258,7 +261,7 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
       }
 
       try {
-        XML.save(targetFile.getPath, download.xml, "UTF-8")
+        XML.save(targetFile.getPath, xml, "UTF-8")
         writeMetaData(targetMetaDataFile, download.metaData)
         true
       } catch {
