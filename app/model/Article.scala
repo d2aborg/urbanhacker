@@ -24,10 +24,7 @@ import scala.math.max
 import scala.xml._
 import scala.xml.parsing.NoBindingFactoryAdapter
 
-/**
-  *
-  */
-class Article(val feed: Feed, val title: String, val link: String, val commentsLink: Option[String],
+class Article(val source: FeedSource, val title: String, val link: String, val commentsLink: Option[String],
               val date: LocalDateTime, val image: Option[URI], val text: String) extends Ordered[Article] {
   val maxSummaryLength = 250
 
@@ -106,8 +103,8 @@ object Article {
 
   def uniqueSorted(articles: Iterable[Article]): SortedSet[Article] = articles.toSet[Article].to[SortedSet]
 
-  def rss(feed: Feed, item: Node): Option[Article] = {
-    val title = stripTitle(unescape(item \ "title"), feed)
+  def rss(source: FeedSource, item: Node): Option[Article] = {
+    val title = stripTitle(unescape(item \ "title"), source)
     val link = unescapeOption(item \ "link")
     if (link isEmpty) {
       Logger.warn("Couldn't find a valid link among: " + (item \ "link"))
@@ -124,29 +121,31 @@ object Article {
         if (parsed.isLeft)
           return Some(parsed.left.get)
 
-        Logger.warn("Failed to parse date of '" + title + "' in feed '" + feed.title + "': " + parsed.right.get)
+        Logger.warn("Failed to parse date of '" + title + "' in feed '" + source.title.getOrElse(source.url) + "': " + parsed.right.get)
       }
 
-      Logger.warn("No parseable date in '" + title + "' in feed '" + feed.title + "' among: " + dateNodes)
+      Logger.warn("No parseable date in '" + title + "' in feed '" + source.title.getOrElse(source.url) + "' among: " + dateNodes)
       None
     }
 
     val parsedDescription = parseHtmlContent(unescape(item \ "description"))
-    val strippedDescription = stripDescription(parsedDescription, link get, feed.siteUrl)
+    val selfLinks = Seq(link, source.siteUrl.map(_.toString)).flatten
+    val strippedDescription = stripDescription(parsedDescription, selfLinks: _*)
     val maybeImgSrc = imageSource(strippedDescription, link get)
-    val strippedText = stripText(strippedDescription, title, feed)
+    val strippedText = stripText(strippedDescription, title, source)
 
-    dateOption.map(new Article(feed, title, link get, commentsLink, _, maybeImgSrc, strippedText)) filter isEnglish
+    dateOption.map(new Article(source, title, link get, commentsLink, _, maybeImgSrc, strippedText)) filter isEnglish
   }
 
-  def stripText(content: NodeSeq, title: String, feed: Feed): String = {
+  def stripText(content: NodeSeq, title: String, source: FeedSource): String = {
+    val feedTitle = source.title.getOrElse("")
     content.text.trim.replaceAll("\\s+", " ")
-      .replaceAll(quote(s" The post $title appeared first on ${feed.title}.") + "$", "") // WIRED
-      .replaceAll(quote(s"$title is a post from ${feed.title}") + "$", "") // CSS-Tricks
+      .replaceAll(quote(s" The post $title appeared first on $feedTitle.") + "$", "") // WIRED
+      .replaceAll(quote(s"$title is a post from $feedTitle") + "$", "") // CSS-Tricks
   }
 
-  def stripTitle(title: String, feed: Feed): String = {
-    title.replaceFirst(" - " + quote(feed.title) + "$", "")
+  def stripTitle(title: String, source: FeedSource): String = {
+    title.replaceFirst(" - " + quote(source.title.getOrElse("")) + "$", "")
   }
 
   /*
@@ -156,8 +155,8 @@ object Article {
   <link rel="self" type="application/atom+xml" href="http://www.blogger.com/feeds/3047562558564532519/posts/default/7850892430692034846" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
   <link rel="alternate" type="text/html" href="http://keaplogik.blogspot.com/2016/01/java-base64-url-safe-encoding.html" title="Java Base64 URL Safe Encoding" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
      */
-  def atom(feed: Feed, entry: Node): Option[Article] = {
-    val title = stripTitle(unescape(entry \ "title"), feed)
+  def atom(source: FeedSource, entry: Node): Option[Article] = {
+    val title = stripTitle(unescape(entry \ "title"), source)
     val link = (entry \ "link").filter(n => n \@ "rel" == "alternate" || (n \@ "rel" isEmpty)) \@ "href"
     if (link isEmpty) {
       Logger.warn("Failed to parse feed entry link from: " + (entry \ "link"))
@@ -167,17 +166,18 @@ object Article {
 
     val date = parseInternetDate(unescape(entry \ "updated"))
     if (date.isRight) {
-      Logger.warn("Failed to parse date of '" + title + "' in feed '" + feed.title + "': " + date.right.get)
+      Logger.warn("Failed to parse date of '" + title + "' in feed '" + source.title.getOrElse(source.url) + "': " + date.right.get)
       return None
     }
 
     val parsedDescription = parseHtmlContent(unescapeOption(entry \ "content").orElse(unescapeOption(entry \ "summary")).getOrElse(""))
 
-    val strippedDescription = stripDescription(parsedDescription, link, feed.siteUrl)
+    val selfLinks = Seq(Some(link), source.siteUrl.map(_.toString)).flatten
+    val strippedDescription = stripDescription(parsedDescription, selfLinks: _*)
     val maybeImgSrc = imageSource(strippedDescription, link)
-    val strippedText = stripText(strippedDescription, title, feed)
+    val strippedText = stripText(strippedDescription, title, source)
 
-    Some(new Article(feed, title, link, commentsLink, date.left get, maybeImgSrc, strippedText)) filter isEnglish
+    Some(new Article(source, title, link, commentsLink, date.left get, maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def tooSmall(img: Node): Boolean = {

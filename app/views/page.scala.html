@@ -20,12 +20,12 @@
                 }
 
                 <p>
-                    @if(article.feed.siteUrl.nonEmpty) {
-                        <a href="@article.feed.siteUrl" class="source" target="_blank">
-                            <img src="@article.feed.favicon" class="favicon" onerror="this.style.display='none'"/>
-                            @article.feed.title
+                    @article.source.siteUrl.fold(Html(article.source.title.getOrElse(""))) { siteUrl =>
+                        <a href="@siteUrl" class="source" target="_blank">
+                            <img src="@article.source.favicon" class="favicon" onerror="this.style.display='none'"/>
+                            @article.source.title.getOrElse("")
                         </a>
-                    } else { @article.feed.title }
+                    }
 
                     <span class="vbar">|</span>
                     <a href="@article.link" class="source text-nowrap" target="_blank">
@@ -33,7 +33,7 @@
                     </a>
 
                     <ul class="follow-buttons">
-                        <li><a class="follow-feed" href="@article.feed.feedUrl" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
+                        <li><a class="follow-feed" href="@article.source.url" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
                     </ul>
 
                     <ul class="share-buttons">

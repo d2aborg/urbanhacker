@@ -1,54 +1,27 @@
 package services
 
-import java.io._
-import java.net.{HttpURLConnection, URL}
+import java.io.StringReader
+import java.net.{HttpURLConnection, URI}
 import java.security.cert.X509Certificate
 import java.security.{MessageDigest, SecureRandom}
-import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDateTime, ZoneOffset}
-import java.util.regex.{Matcher, Pattern}
 import javax.net.ssl._
 
 import com.google.inject.{Inject, Singleton}
 import model.Utils._
-import model.{Article, Feed}
+import model._
 import play.api.Logger
 
 import scala.collection.{SortedSet, mutable}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.io.Source
-import scala.pickling.Defaults._
-import scala.pickling.json._
-import scala.xml.{Elem, XML}
+import scala.xml.XML
 
 @Singleton
-class FeedCache @Inject()(implicit exec: ExecutionContext) {
-
-  case class Download(source: FeedSource,
-                      feed: Feed,
-                      metaData: MetaData,
-                      timestamp: LocalDateTime,
-                      previous: Option[Download]) {
-    def byFeedUrl: (String, Download) = source.feedUrl -> this
-
-    def articles: SortedSet[Article] = Article.uniqueSorted(allArticles)
-
-    def allArticles: SortedSet[Article] =
-      feed.articles ++ previous.map(_.allArticles).getOrElse(Nil)
-
-    def latestAt(timestamp: LocalDateTime): Option[Download] =
-      if (newerThan(timestamp))
-        previous.flatMap(_.latestAt(timestamp))
-      else
-        Some(this)
-
-    def newerThan(timestamp: LocalDateTime): Boolean = this.timestamp.isAfter(timestamp)
-  }
-
-  case class MetaData(lastModified: Option[String], eTag: Option[String], checksum: String)
+class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext) {
 
   // configure the SSLContext with a permissive TrustManager
   val ctx = SSLContext.getInstance("TLS")
@@ -62,14 +35,9 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
   SSLContext.setDefault(ctx)
 
   val sections: List[String] = List("news", "blogs")
-  val directory = new File("feeds")
-  val filenameTimestampPattern = DateTimeFormatter.ofPattern("uuuu-MM-dd_HHmmss")
-  val fileExtension: String = ".xml"
-  val metaDataExtension: String = ".json"
-
-  val cache: mutable.Map[String, mutable.Map[String, Download]] =
-    mutable.Map((for (section <- sections)
-      yield (section, mutable.Map(loadChains(section).map(_.byFeedUrl): _*))): _*)
+  val cache: mutable.Map[String, mutable.Map[URI, Feed]] = mutable.Map(sections.map { section =>
+    (section, mutable.Map(loadChains(section).map(_.byUrl): _*))
+  }: _*)
 
   def frequency(articles: SortedSet[Article], timestamp: LocalDateTime): Double = {
     val mostRecent = articles take 10
@@ -97,8 +65,8 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
       _._2
     }
 
-  def latest(section: String, source: FeedSource): Option[Download] = cache synchronized {
-    cache(section) get source.feedUrl
+  def latest(section: String, source: FeedSource): Option[Feed] = cache synchronized {
+    cache(section) get source.url
   }
 
   def reload(): Unit = {
@@ -110,8 +78,8 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
       eventualParsed.onSuccess {
         case Some(download) =>
           cache synchronized {
-            cache(section)(download.source.feedUrl) = download
-            logInfo("Updated", download.source.feedUrl)
+            cache(section)(download.url) = download
+            logInfo("Updated", download.source.url)
           }
       }
     }
@@ -121,16 +89,26 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     Logger.info("Updated " + downloaded.size + "/" + eventuallyDownloaded.size)
   }
 
-  def downloadAll(section: String): Seq[Future[Option[Download]]] =
+  def downloadAll(section: String): Seq[Future[Option[Feed]]] =
     for (source <- loadSources(section))
       yield download(section, source)
 
-  def download(section: String, source: FeedSource): Future[Option[Download]] =
+  def download(section: String, source: FeedSource): Future[Option[Feed]] =
     Future {
       download(source, latest(section, source))
     }
 
-  def loadChains(section: String): Seq[Download] = {
+  def save(feed: Feed, download: TextDownload): Boolean = {
+    if (feed.previous.map(_.metaData).map(_.checksum).contains(feed.metaData.checksum))
+      return false
+
+    if (feed.previous.map(_.articles).contains(feed.articles))
+      return false
+
+    feedStore.save(download)
+  }
+
+  def loadChains(section: String): Seq[Feed] = {
     Await.result(Future.traverse {
       loadSources(section)
     } { source =>
@@ -138,54 +116,22 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     }, 10 minutes) flatten
   }
 
-  def loadChainOrDownload(source: FeedSource): Future[Option[Download]] =
+  def loadChainOrDownload(source: FeedSource): Future[Option[Feed]] =
     Future {
       loadChain(source) orElse download(source)
     }
 
-  def loadChain(source: FeedSource): Option[Download] = {
-    files(source.feedUrl).foldLeft(None: Option[Download]) { (previous, file) =>
-      load(source, file, previous)
-    } map { download =>
-      logInfo("Loaded " + download.articles.size + " from disk", source.feedUrl)
-      download
+  def loadChain(source: FeedSource): Option[Feed] = {
+    feedStore.load(source.url).foldLeft(None: Option[Feed]) { (previous, download) =>
+      parse(source, download, previous)
     }
   }
 
-  def load(source: FeedSource, file: File, previous: Option[Download]): Option[Download] = {
-    val timestamp = fileTimestamp(source.feedUrl, file)
-    try {
-      val xml = XML.load(new InputStreamReader(new FileInputStream(file), "UTF-8"))
-      val metaData = Source.fromFile(metaDataFile(source.feedUrl, timestamp)).mkString.unpickle[MetaData]
-
-      parse(source, xml, metaData, timestamp, previous)
-    } catch {
-      case e: Exception =>
-        logWarn("Failed to load from disk", file.getName, e)
-        None
-    }
-  }
-
-  def loadSources(section: String): Seq[FeedSource] =
-    Source.fromFile(s"feeds.$section.txt").getLines
-      .map(_.trim)
-      .filterNot(line => line.startsWith("#") || line.isEmpty) map { line =>
-      line.split("\\|") match {
-        case Array(feedUrl) => FeedSource(feedUrl, feedUrl)
-        case Array(feedUrl, group) => FeedSource(feedUrl, nonEmpty(group, feedUrl))
-        case Array(feedUrl, group, siteUrl) => FeedSource(feedUrl, nonEmpty(group, feedUrl), nonEmpty(siteUrl))
-        case Array(feedUrl, group, siteUrl, title) => FeedSource(feedUrl, nonEmpty(group, feedUrl), nonEmpty(siteUrl), nonEmpty(title))
-      }
-    } toSeq
-
-  def fileTimestamp(url: String, file: File): LocalDateTime =
-    LocalDateTime parse(filenameMatcher(url, file).get group 1, filenameTimestampPattern)
-
-  def download(source: FeedSource, previous: Option[Download] = None): Option[Download] = {
+  def download(source: FeedSource, previous: Option[Feed] = None): Option[Feed] = {
     val timestamp = LocalDateTime.now
 
     try {
-      val connection = new URL(source.feedUrl).openConnection.asInstanceOf[HttpURLConnection]
+      val connection = source.url.toURL.openConnection.asInstanceOf[HttpURLConnection]
       connection match {
         case httpsConnection: HttpsURLConnection =>
           httpsConnection.setHostnameVerifier(new HostnameVerifier() {
@@ -200,127 +146,60 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
       }
 
       previous map (_.metaData) flatMap (_.lastModified) orElse {
-        previous map (_.timestamp.atOffset(ZoneOffset.UTC).format(RFC_1123_DATE_TIME))
+        previous map (_.metaData.timestamp.atOffset(ZoneOffset.UTC).format(RFC_1123_DATE_TIME))
       } foreach { lastModified =>
         connection setRequestProperty("If-Modified-Since", lastModified)
       }
 
-      val xml = try {
+      val content = try {
         connection connect()
         if (connection.getResponseCode == 304)
           return None
 
-        XML.load(connection.getInputStream)
+        Source.fromInputStream(connection.getInputStream, Option(connection.getContentEncoding).getOrElse("UTF-8")).mkString
       } finally {
         connection disconnect()
       }
 
-      logInfo("Downloaded", source.feedUrl)
+      logInfo("Downloaded", source.url)
 
-      val metaData = MetaData(
+      val metaData = MetaData(source.url.toString,
         Option(connection getHeaderField "Last-Modified"),
         Option(connection getHeaderField "ETag"),
-        md5(xml.mkString))
+        md5(content), timestamp)
 
-      parse(source, xml, metaData, timestamp, previous).filter(download => save(xml, download))
+      val download = TextDownload(metaData, content)
+
+      parse(source, download, previous).filter(save(_, download))
     } catch {
       case e: Exception =>
-        logWarn("Failed to download", source.feedUrl, e)
+        logWarn("Failed to download", source.url, e)
         None
-    }
-  }
-
-  def parse(source: FeedSource, xml: Elem, metaData: MetaData, timestamp: LocalDateTime, previous: Option[Download]): Option[Download] = {
-    Feed.parse(source, xml).map {
-      Download(source, _, metaData, timestamp, previous)
-    }
-  }
-
-  def save(xml: Elem, download: Download): Boolean = {
-    if (download.previous.map(_.metaData.checksum).contains(download.metaData.checksum))
-      return false
-
-    if (download.previous.map(_.feed).contains(download.feed))
-      return false
-
-    if (!directory.isDirectory)
-      return true
-
-    try {
-      val targetFile = file(download.source.feedUrl, download.timestamp)
-      val targetMetaDataFile = metaDataFile(download.source.feedUrl, download.timestamp)
-
-      if (!targetFile.getParentFile.isDirectory && !targetFile.getParentFile.mkdirs) {
-        logInfo("Failed to create target directory " + targetFile.getParentFile + " for", download.source.feedUrl)
-        return false
-      }
-
-      if (!targetMetaDataFile.getParentFile.isDirectory && !targetMetaDataFile.getParentFile.mkdirs) {
-        logInfo("Failed to create metadata target directory " + targetMetaDataFile.getParentFile + " for", download.source.feedUrl)
-        return false
-      }
-
-      try {
-        XML.save(targetFile.getPath, xml, "UTF-8")
-        writeMetaData(targetMetaDataFile, download.metaData)
-        true
-      } catch {
-        case e: Exception =>
-          targetFile.delete()
-          targetMetaDataFile.delete()
-          throw e
-      }
-    } catch {
-      case e: Exception =>
-        logWarn("Failed to save to disk", download.source.feedUrl, e)
-        false
-    }
-  }
-
-  def writeMetaData(file: File, metaData: MetaData): Unit = {
-    val metaDataWriter = new BufferedWriter(new FileWriter(file))
-    try {
-      metaDataWriter.write(metaData.pickle.value)
-      metaDataWriter.newLine()
-    } finally {
-      metaDataWriter.close()
     }
   }
 
   def md5(data: String): String =
     MessageDigest.getInstance("MD5").digest(data.getBytes("UTF-8")).map("%02x".format(_)).mkString
 
-  def dir(url: String): File =
-    new File(directory, dirname(url))
-
-  def file(url: String, timestamp: LocalDateTime): File =
-    new File(dir(url), filename(timestamp) + fileExtension)
-
-  def metaDataFile(url: String, timestamp: LocalDateTime): File =
-    new File(dir(url), filename(timestamp) + metaDataExtension)
-
-  def dirname(url: String): String = shortUrl(url)
-
-  def filename(timestamp: LocalDateTime): String = timestamp format filenameTimestampPattern
-
-  def files(url: String): Array[File] = {
-    Option(dir(url).listFiles(fileFilter(url))).map(_.sorted).getOrElse(Array[File]())
+  def parse(source: FeedSource, textDownload: TextDownload, previous: Option[Feed]): Option[Feed] = {
+    val xml = XML.load(new StringReader(textDownload.content))
+    val xmlDownload = XmlDownload(textDownload.metaData, xml)
+    Feed.parse(source, xmlDownload, previous)
   }
 
-  def fileFilter(url: String): FileFilter = new FileFilter {
-    override def accept(file: File): Boolean = filenameMatcher(url, file) isDefined
-  }
+  def loadSources(section: String): Seq[FeedSource] =
+    Source.fromFile(s"feeds.$section.txt").getLines
+      .map(_.trim)
+      .filterNot(line => line.startsWith("#") || line.isEmpty) map { line =>
+      line.split("\\|") match {
+        case Array(feedUrl) => FeedSource(new URI(feedUrl), feedUrl)
+        case Array(feedUrl, group) => FeedSource(new URI(feedUrl), nonEmpty(group, feedUrl))
+        case Array(feedUrl, group, siteUrl) => FeedSource(new URI(feedUrl), nonEmpty(group, feedUrl), nonEmpty(siteUrl).map(new URI(_)))
+        case Array(feedUrl, group, siteUrl, title) => FeedSource(new URI(feedUrl), nonEmpty(group, feedUrl), nonEmpty(siteUrl).map(new URI(_)), nonEmpty(title))
+      }
+    } toSeq
 
-  def filenameMatcher(url: String, file: File): Option[Matcher] =
-    filenamePattern(url) matcher file.getName match {
-      case matcher if matcher.matches => Some(matcher)
-      case _ => None
-    }
-
-  def filenamePattern(url: String): Pattern =
-    Pattern compile "^(\\d{4}-\\d{2}-\\d{2}_\\d{6})" + Pattern.quote(fileExtension) + "$"
-
-  def shortUrl(url: String): String = url
+  def shortUrl(url: URI): String = url.toString
     .replaceFirst("^https?://(www\\.)?", "")
     .replaceFirst("^([^/]+)\\.com/", "$1/")
     .replaceAll("[^a-zA-Z0-9_\\-.]", "_")
@@ -328,11 +207,9 @@ class FeedCache @Inject()(implicit exec: ExecutionContext) {
     .replaceFirst("^_", "")
     .replaceFirst("_$", "")
 
-  def logInfo(msg: String, url: String): Unit = Logger.info(mkLogMsg(msg, url))
+  def logInfo(msg: String, url: URI): Unit = Logger.info(mkLogMsg(msg, url))
 
-  def logWarn(msg: String, url: String, e: Exception): Unit = Logger.warn(mkLogMsg(msg, url), e)
+  def logWarn(msg: String, url: URI, e: Exception): Unit = Logger.warn(mkLogMsg(msg, url), e)
 
-  def mkLogMsg(msg: String, url: String): String = msg + ": " + shortUrl(url)
+  def mkLogMsg(msg: String, url: URI): String = msg + ": " + shortUrl(url)
 }
-
-case class FeedSource(feedUrl: String, group: String, siteUrl: Option[String] = None, title: Option[String] = None)

@@ -1,7 +1,7 @@
 import java.time.Clock
 
 import com.google.inject.AbstractModule
-import services.FeedCache
+import services.{FeedCache, FeedStore, FileFeedStore}
 
 /**
  * This class is a Guice module that tells Guice how to bind several
@@ -20,6 +20,7 @@ class Module extends AbstractModule {
     bind(classOf[Clock]).toInstance(Clock.systemDefaultZone)
 
     bind(classOf[FeedCache]).asEagerSingleton()
+    bind(classOf[FeedStore]).to(classOf[FileFeedStore])
   }
 
 }
