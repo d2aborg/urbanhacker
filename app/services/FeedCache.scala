@@ -54,8 +54,8 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
       cache(section) values
     }.groupBy(_.source.group).values.map {
       _.flatMap(_.latestAt(timestamp))
-    }.map { downloadGroup =>
-      Article.uniqueSorted(downloadGroup.flatMap(_.articles))
+    }.map { feedGroup =>
+      Article.uniqueSorted(feedGroup.flatMap(_.articles))
     }.filter {
       _.nonEmpty
     }.flatMap { articleGroup =>
@@ -76,10 +76,10 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
 
     for ((section, eventualAllParsed) <- feedBatches; eventualParsed <- eventualAllParsed) {
       eventualParsed.onSuccess {
-        case Some(download) =>
+        case Some(feed) =>
           cache synchronized {
-            cache(section)(download.url) = download
-            logInfo("Updated", download.source.url)
+            cache(section)(feed.url) = feed
+            Logger.info("Updated: " + feed.source.url)
           }
       }
     }
@@ -94,18 +94,16 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
       yield download(section, source)
 
   def download(section: String, source: FeedSource): Future[Option[Feed]] =
-    Future {
-      download(source, latest(section, source))
-    }
+    download(source, latest(section, source))
 
-  def save(feed: Feed, download: TextDownload): Boolean = {
+  def save(feed: Feed, download: TextDownload): Future[Option[Feed]] = {
     if (feed.previous.map(_.metaData).map(_.checksum).contains(feed.metaData.checksum))
-      return false
+      return Future(None)
 
     if (feed.previous.map(_.articles).contains(feed.articles))
-      return false
+      return Future(None)
 
-    feedStore.save(download)
+    feedStore.save(download).map(if (_) Some(feed) else None)
   }
 
   def loadChains(section: String): Seq[Feed] = {
@@ -117,17 +115,20 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
   }
 
   def loadChainOrDownload(source: FeedSource): Future[Option[Feed]] =
-    Future {
-      loadChain(source) orElse download(source)
+    loadChain(source) flatMap { f =>
+      if (f isEmpty) download(source)
+      else Future(f)
     }
 
-  def loadChain(source: FeedSource): Option[Feed] = {
-    feedStore.load(source.url).foldLeft(None: Option[Feed]) { (previous, download) =>
-      parse(source, download, previous)
+  def loadChain(source: FeedSource): Future[Option[Feed]] = {
+    feedStore.load(source.url).map {
+      _.foldLeft(None: Option[Feed]) { (previous, download) =>
+        parse(source, download, previous)
+      }
     }
   }
 
-  def download(source: FeedSource, previous: Option[Feed] = None): Option[Feed] = {
+  def download(source: FeedSource, previous: Option[Feed] = None): Future[Option[Feed]] = {
     val timestamp = LocalDateTime.now
 
     try {
@@ -154,27 +155,29 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
       val content = try {
         connection connect()
         if (connection.getResponseCode == 304)
-          return None
+          return Future(None)
 
         Source.fromInputStream(connection.getInputStream, Option(connection.getContentEncoding).getOrElse("UTF-8")).mkString
       } finally {
         connection disconnect()
       }
 
-      logInfo("Downloaded", source.url)
+      Logger.info("Downloaded: " + source.url)
 
-      val metaData = MetaData(source.url.toString,
+      val metaData = MetaData(source.url,
         Option(connection getHeaderField "Last-Modified"),
         Option(connection getHeaderField "ETag"),
         md5(content), timestamp)
 
-      val download = TextDownload(metaData, content)
+      val download = TextDownload(0, metaData, content)
 
-      parse(source, download, previous).filter(save(_, download))
+      parse(source, download, previous).fold {
+        Future(None): Future[Option[Feed]]
+      } { save(_, download) }
     } catch {
       case e: Exception =>
-        logWarn("Failed to download", source.url, e)
-        None
+        Logger.warn("Failed to download: " + source.url, e)
+        Future(None)
     }
   }
 
@@ -198,18 +201,4 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
         case Array(feedUrl, group, siteUrl, title) => FeedSource(new URI(feedUrl), nonEmpty(group, feedUrl), nonEmpty(siteUrl).map(new URI(_)), nonEmpty(title))
       }
     } toSeq
-
-  def shortUrl(url: URI): String = url.toString
-    .replaceFirst("^https?://(www\\.)?", "")
-    .replaceFirst("^([^/]+)\\.com/", "$1/")
-    .replaceAll("[^a-zA-Z0-9_\\-.]", "_")
-    .replaceAll("_+", "_")
-    .replaceFirst("^_", "")
-    .replaceFirst("_$", "")
-
-  def logInfo(msg: String, url: URI): Unit = Logger.info(mkLogMsg(msg, url))
-
-  def logWarn(msg: String, url: URI, e: Exception): Unit = Logger.warn(mkLogMsg(msg, url), e)
-
-  def mkLogMsg(msg: String, url: URI): String = msg + ": " + shortUrl(url)
 }

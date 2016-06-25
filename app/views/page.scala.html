@@ -22,7 +22,7 @@
                 <p>
                     @article.source.siteUrl.fold(Html(article.source.title.getOrElse(""))) { siteUrl =>
                         <a href="@siteUrl" class="source" target="_blank">
-                            <img src="@article.source.favicon" class="favicon" onerror="this.style.display='none'"/>
+                            @article.source.favicon.map { favicon => <img src="@favicon" class="favicon" onerror="this.style.display='none'"/> }
                             @article.source.title.getOrElse("")
                         </a>
                     }

@@ -119,7 +119,7 @@ object Article {
       for (dateNode <- dateNodes; nodeText <- unescapeOption(dateNode)) {
         val parsed = parseInternetDate(nodeText)
         if (parsed.isLeft)
-          return Some(parsed.left.get)
+          return parsed.left.toOption
 
         Logger.warn("Failed to parse date of '" + title + "' in feed '" + source.title.getOrElse(source.url) + "': " + parsed.right.get)
       }

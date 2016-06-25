@@ -1,11 +1,14 @@
 package model
 
 import java.net.URI
-import java.time.LocalDateTime
+import java.sql.Timestamp
 import java.time.temporal.ChronoUnit
+import java.time.{LocalDateTime, ZoneOffset}
 
 import model.Utils.{nonEmpty, unescape}
 import play.api.Logger
+import slick.driver.PostgresDriver.api._
+import slick.lifted.Tag
 
 import scala.collection.SortedSet
 import scala.xml.{Elem, Node, NodeSeq}
@@ -92,12 +95,41 @@ object Feed {
     .replaceAll(": The Full Feed$", "")
 }
 
-case class MetaData(url: String, lastModified: Option[String], eTag: Option[String], checksum: String,
-                    timestamp: LocalDateTime) {
-  def uri: URI = new URI(url)
+case class MetaData(url: URI, lastModified: Option[String], eTag: Option[String], checksum: String, timestamp: LocalDateTime) {
 }
 
-case class TextDownload(metaData: MetaData, content: String)
+case class TextDownload(id: Long, metaData: MetaData, content: String)
+
+class TextDownloads(tag: Tag) extends Table[TextDownload](tag, "downloads") {
+  def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
+
+  def url = column[String]("url")
+
+  def lastModified = column[Option[String]]("last_modified")
+
+  def eTag = column[Option[String]]("etag")
+
+  def checksum = column[String]("checksum")
+
+  def timestamp = column[Timestamp]("timestamp")
+
+  def content = column[String]("content")
+
+  override def * =
+    (id, (url, lastModified, eTag, checksum, timestamp), content).shaped <>
+      ( {
+        case (id, (url, lastModified, eTag, checksum, timestamp), content) => TextDownload(id, MetaData(new URI(url), lastModified, eTag, checksum, timestamp.toLocalDateTime), content)
+      }, { download: TextDownload =>
+        Some((download.id, (
+          download.metaData.url.toString, download.metaData.lastModified, download.metaData.eTag, download.metaData.checksum,
+          new Timestamp(download.metaData.timestamp.toInstant(ZoneOffset.UTC).toEpochMilli)),
+          download.content))
+      })
+}
+
+object downloads extends TableQuery(new TextDownloads(_)) {
+  val byUrl = this.findBy(_.url)
+}
 
 case class XmlDownload(metaData: MetaData, xml: Elem)
 
@@ -105,6 +137,6 @@ case class FeedSource(url: URI, group: String, siteUrl: Option[URI] = None, titl
   def apply(siteUrl: Option[URI], title: Option[String]): FeedSource =
     FeedSource(url, group, this.siteUrl.orElse(siteUrl), this.title.orElse(title))
 
-  def favicon: String =
-    siteUrl.map(_.resolve("/favicon.ico").toString).getOrElse("")
+  def favicon: Option[URI] =
+    siteUrl.map(_.resolve("/favicon.ico"))
 }
