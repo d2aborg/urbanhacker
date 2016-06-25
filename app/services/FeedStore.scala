@@ -17,7 +17,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider)(implicit exe
   Logger.info(downloads.schema.create.statements.mkString("\n"))
 
   def load(url: URI): Future[Seq[TextDownload]] = {
-    db.run(downloads.filter(_.url === url.toString).sortBy(_.url).result)
+    db.run(downloads.filter(_.url === url.toString).sortBy(_.timestamp).result)
   }
 
   def save(download: TextDownload): Future[Boolean] = {
