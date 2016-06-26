@@ -129,9 +129,6 @@ body > .container > h1 a:hover {
     width: 16px;
     height: 16px;
 }
-.article .vbar {
-    color: lightgrey;
-}
 
 ul.share-buttons, ul.follow-buttons {
     list-style: none;

@@ -25,9 +25,9 @@
                             @article.source.favicon.map { favicon => <img src="@favicon" class="favicon" onerror="this.style.display='none'"/> }
                             @article.source.title.getOrElse("")
                         </a>
+                        <span class="text-muted">·</span>
                     }
 
-                    <span class="vbar">|</span>
                     <a href="@article.link" class="source text-nowrap" target="_blank">
                         <span class="since" date="@article.dateUTC">@article.since</span> &raquo;
                     </a>
