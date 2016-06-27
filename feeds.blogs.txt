@@ -73,6 +73,7 @@ http://feeds.feedburner.com/alistapart/main
 http://feeds.feedburner.com/CssTricks
 https://blog.twitter.com/api/blog.rss?name=engineering
 http://dev.sortable.com/feed.xml
+http://feeds.feedblitz.com/atomicspin
 
 # Tool Blogs
 http://blog.jquery.com/feed/

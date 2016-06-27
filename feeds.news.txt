@@ -46,3 +46,4 @@ https://medium.com/feed/tag/artificial-intelligence|medium
 https://medium.com/feed/tag/apps|medium
 https://medium.com/feed/tag/bitcoin|medium
 http://feeds.feedburner.com/nymag/selectall
+http://www.theverge.com/rss/full.xml
