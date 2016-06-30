@@ -25,7 +25,6 @@ https://www.reddit.com/r/programming/.rss|reddit
 https://www.reddit.com/r/technology/.rss|reddit
 https://www.reddit.com/r/coding/.rss|reddit
 https://www.reddit.com/r/algorithms/.rss|reddit
-https://www.reddit.com/r/Techfeed/.rss|reddit
 https://www.smashingmagazine.com/feed/
 http://www.theregister.co.uk/headlines.atom
 http://www.theonion.com/feeds/rss

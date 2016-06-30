@@ -41,6 +41,7 @@ http://joelgrus.com/feeds/atom.xml
 http://melix.github.io/blog/
 http://jvns.ca/atom.xml
 https://josipbakic.wordpress.com/feed/
+http://movingfulcrum.com/rss/
 
 # Organisation Blogs
 http://www.javaworld.com/blog/cool-tools-jw/index.rss
@@ -74,6 +75,7 @@ http://feeds.feedburner.com/CssTricks
 https://blog.twitter.com/api/blog.rss?name=engineering
 http://dev.sortable.com/feed.xml
 http://feeds.feedblitz.com/atomicspin
+https://code.facebook.com/posts/rss
 
 # Tool Blogs
 http://blog.jquery.com/feed/
