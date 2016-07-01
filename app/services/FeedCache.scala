@@ -114,8 +114,9 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
     }
 
     val eventuallyDownloaded = feedBatches flatMap (_._2)
-    val downloaded = Await.result(Future sequence eventuallyDownloaded, 10 minutes).flatten
-    Logger.info("Updated " + downloaded.size + "/" + eventuallyDownloaded.size)
+    Future sequence eventuallyDownloaded foreach { downloaded =>
+      Logger.info("Updated " + downloaded.flatten.size + "/" + eventuallyDownloaded.size)
+    }
   }
 
   def downloadAll(section: String): Seq[Future[Option[Feed]]] =
