@@ -3,7 +3,7 @@ package model
 import java.net.URI
 import java.sql.Timestamp
 import java.time.temporal.ChronoUnit
-import java.time.{LocalDateTime, ZoneOffset}
+import java.time.{OffsetDateTime, ZoneOffset}
 
 import model.Utils.{nonEmpty, unescape}
 import play.api.Logger
@@ -29,13 +29,13 @@ case class Feed(source: FeedSource, metaData: MetaData, previous: Option[Feed], 
   def allArticles2: SortedSet[Article] =
     articles ++ previous.map(_.allArticles2).getOrElse(Nil)
 
-  def latestAt(timestamp: LocalDateTime): Option[Feed] =
+  def latestAt(timestamp: OffsetDateTime): Option[Feed] =
     if (newerThan(timestamp))
       previous.flatMap(_.latestAt(timestamp))
     else
       Some(this)
 
-  def newerThan(timestamp: LocalDateTime): Boolean = metaData.timestamp.isAfter(timestamp)
+  def newerThan(timestamp: OffsetDateTime): Boolean = metaData.timestamp.isAfter(timestamp)
 }
 
 object Feed {
@@ -65,7 +65,8 @@ object Feed {
 
     val siteUrl = nonEmpty(unescape(channel \ "link")).map(new URI(_))
 
-    val appliedSource: FeedSource = source(siteUrl, title)
+    val appliedSource = source.copy(siteUrl = source.siteUrl.orElse(siteUrl), title = source.title.orElse(title))
+
     new Feed(appliedSource, download.metaData, previous, Article.uniqueSorted(articles(appliedSource).flatten))
   }
 
@@ -82,7 +83,8 @@ object Feed {
     if (siteUrl isEmpty)
       Logger.info("Found no viable link in feed: " + title + ", among: " + (feedRoot \ "link"))
 
-    val appliedSource: FeedSource = source(siteUrl, title)
+    val appliedSource = source.copy(siteUrl = source.siteUrl.orElse(siteUrl), title = source.title.orElse(title))
+
     new Feed(appliedSource, download.metaData, previous, Article.uniqueSorted(articles(appliedSource).flatten))
   }
 
@@ -95,7 +97,7 @@ object Feed {
     .replaceAll(": The Full Feed$", "")
 }
 
-case class MetaData(url: URI, lastModified: Option[String], eTag: Option[String], checksum: String, timestamp: LocalDateTime) {
+case class MetaData(url: URI, lastModified: Option[String], eTag: Option[String], checksum: String, timestamp: OffsetDateTime) {
 }
 
 case class TextDownload(id: Long, metaData: MetaData, content: String)
@@ -118,11 +120,11 @@ class TextDownloads(tag: Tag) extends Table[TextDownload](tag, "downloads") {
   override def * =
     (id, (url, lastModified, eTag, checksum, timestamp), content).shaped <>
       ( {
-        case (id, (url, lastModified, eTag, checksum, timestamp), content) => TextDownload(id, MetaData(new URI(url), lastModified, eTag, checksum, timestamp.toLocalDateTime), content)
+        case (id, (url, lastModified, eTag, checksum, timestamp), content) => TextDownload(id, MetaData(new URI(url), lastModified, eTag, checksum, timestamp.toInstant.atOffset(ZoneOffset.UTC)), content)
       }, { download: TextDownload =>
         Some((download.id, (
           download.metaData.url.toString, download.metaData.lastModified, download.metaData.eTag, download.metaData.checksum,
-          new Timestamp(download.metaData.timestamp.toInstant(ZoneOffset.UTC).toEpochMilli)),
+          new Timestamp(download.metaData.timestamp.toInstant.toEpochMilli)),
           download.content))
       })
 }
@@ -134,9 +136,6 @@ object downloads extends TableQuery(new TextDownloads(_)) {
 case class XmlDownload(metaData: MetaData, xml: Elem)
 
 case class FeedSource(url: URI, group: String, siteUrl: Option[URI] = None, title: Option[String] = None) {
-  def apply(siteUrl: Option[URI], title: Option[String]): FeedSource =
-    FeedSource(url, group, this.siteUrl.orElse(siteUrl), this.title.orElse(title))
-
   def favicon: Option[URI] =
     siteUrl.map(_.resolve("/favicon.ico"))
 }

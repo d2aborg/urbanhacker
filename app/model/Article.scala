@@ -2,11 +2,11 @@ package model
 
 import java.io.StringReader
 import java.net.URI
+import java.time._
 import java.time.format.DateTimeFormatter.{ISO_OFFSET_DATE_TIME, RFC_1123_DATE_TIME}
 import java.time.format._
 import java.time.temporal.ChronoField._
 import java.time.temporal.ChronoUnit
-import java.time.{LocalDateTime, _}
 import java.util.Locale
 import java.util.regex.Pattern.quote
 
@@ -25,20 +25,18 @@ import scala.xml._
 import scala.xml.parsing.NoBindingFactoryAdapter
 
 class Article(val source: FeedSource, val title: String, val link: String, val commentsLink: Option[String],
-              val date: LocalDateTime, val image: Option[URI], val text: String) extends Ordered[Article] {
+              val date: OffsetDateTime, val image: Option[URI], val text: String) extends Ordered[Article] {
   val maxSummaryLength = 250
 
   override def compare(that: Article): Int = -date.compareTo(that.date)
 
-  def frecency(frequency: Double, timestamp: LocalDateTime): Double =
+  def frecency(frequency: Double, timestamp: OffsetDateTime): Double =
     Math.pow(age(timestamp), 4) * frequency
 
-  def age(timestamp: LocalDateTime): Long =
+  def age(timestamp: OffsetDateTime): Long =
     ChronoUnit.SECONDS.between(date, timestamp)
 
-  def dateUTC = date.atZone(ZoneId.systemDefault).toOffsetDateTime
-
-  def since(implicit now: LocalDateTime): String = {
+  def since(implicit now: OffsetDateTime): String = {
     val years = ChronoUnit.YEARS.between(date, now)
     val months = ChronoUnit.MONTHS.between(date, now)
     val days = ChronoUnit.DAYS.between(date, now)
@@ -113,7 +111,7 @@ object Article {
 
     val commentsLink = unescapeOption(item \ "comments")
 
-    def dateOption: Option[LocalDateTime] = {
+    def dateOption: Option[OffsetDateTime] = {
       val dateNodes = item \ "date" ++ item \ "pubDate"
 
       for (dateNode <- dateNodes; nodeText <- unescapeOption(dateNode)) {
@@ -326,10 +324,10 @@ object Article {
     // 2015-09-29 14:56:55 UTC
     ("ISO With Spaces", DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss zzz", Locale.US)))
 
-  def parseInternetDate(date: String): Either[LocalDateTime, Seq[DateTimeParseException]] = {
+  def parseInternetDate(date: String): Either[OffsetDateTime, Seq[DateTimeParseException]] = {
     val parsedOrFailures = for ((formatDesc, dateFormat) <- dateFormats) yield try {
       val parsed = ZonedDateTime parse(date replaceFirst("^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ", ""), dateFormat)
-      Left(parsed withZoneSameInstant ZoneId.systemDefault() toLocalDateTime)
+      Left(parsed withZoneSameInstant ZoneOffset.UTC toOffsetDateTime)
     } catch {
       case e: DateTimeParseException => Right(new DateTimeParseException(formatDesc + ": " + e.getMessage, e.getParsedString, e.getErrorIndex, e))
     }

@@ -1,77 +1,37 @@
 package controllers
 
-import java.time.LocalDateTime
+import java.time.{OffsetDateTime, ZoneOffset}
 import javax.inject._
 
-import akka.actor.ActorSystem
-import model.Article
-import play.api.Logger
-import play.api.inject.ApplicationLifecycle
+import play.api.Configuration
 import play.api.mvc._
 import services.FeedCache
 
-import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
+import scala.util.Try
 
 /**
   * This controller creates an `Action` to handle HTTP requests to the
   * application's home page.
   */
 @Singleton
-class HomeController @Inject()(actorSystem: ActorSystem, feedCache: FeedCache, lifecycle: ApplicationLifecycle)
+class HomeController @Inject()(feedCache: FeedCache, configuration: Configuration)
                               (implicit exec: ExecutionContext) extends Controller {
-  val feedCacheReloadTask = actorSystem.scheduler.schedule(15 seconds, 30 minutes) {
-    feedCache.reload()
-  }
-  lifecycle.addStopHook { () =>
-    Logger.info("Cancelling reload task...")
-    Future.successful(feedCacheReloadTask.cancel)
-  }
-
-  def index = Action { implicit request =>
-    load("news", "News")
-  }
-
-  def blogs = Action { implicit request =>
-    load("blogs", "Blogs")
-  }
+  implicit val sections = configuration.getConfig("sections").getOrElse(Configuration.empty)
 
   def about = Action { implicit request =>
-    Ok(views.html.about(request))
+    Ok(views.html.about())
   }
 
-  def reload = Action {
-    feedCache.reload()
+  def articles(section: String, timestamp: Option[String], page: Option[Int]) = Action { implicit request =>
+    implicit val now = OffsetDateTime.now(ZoneOffset.UTC)
 
-    Ok("Reloaded")
-  }
-
-  def load(section: String, title: String)(implicit request: Request[AnyContent]): Result = {
-    implicit val now = LocalDateTime now
-
-    val pageNum = request.getQueryString("page").map(_.toInt).getOrElse(1)
-    val timestamp = request.getQueryString("timestamp").map(LocalDateTime parse).getOrElse(now)
-
-    val (articles, nextPage) = pageAndNextPage(section, pageNum, timestamp)
+    val timestampOrNow = timestamp.flatMap(t => Try(OffsetDateTime.parse(t)).toOption) getOrElse now
+    val (articles, latestTimestamp, nextPage) = feedCache(section, timestampOrNow, page getOrElse 1, 15)
 
     if (request.getQueryString("ajax") isEmpty)
-      Ok(views.html.articles(title, articles, nextPage, timestamp))
+      Ok(views.html.articles(section, articles, latestTimestamp, nextPage))
     else
-      Ok(views.html.page(articles, nextPage, timestamp))
-  }
-
-  def pageAndNextPage(section: String, pageNum: Int, timestamp: LocalDateTime): (Seq[Article], Option[Int]) = {
-    val articles = feedCache(section, timestamp)
-    val (page, hasMore) = pageAndHasMore(articles, pageNum)
-    val nextPage = if (hasMore) Some(pageNum + 1) else None
-    (page, nextPage)
-  }
-
-  private val pageSize = 30
-
-  def pageAndHasMore(all: Seq[Article], pageNum: Int): (Seq[Article], Boolean) = {
-    val from = (pageNum - 1) * pageSize
-    val until = pageNum * pageSize
-    (all.slice(from, until), all.size > until)
+      Ok(views.html.page(articles, latestTimestamp, nextPage))
   }
 }

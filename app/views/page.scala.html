@@ -1,7 +1,7 @@
 @import model.Article
-@import java.time.LocalDateTime
+@import java.time.OffsetDateTime
 
-@(articles: Seq[Article], nextPage: Option[Int], timestamp: LocalDateTime)(implicit now: LocalDateTime)
+@(articles: Seq[Article], timestamp: OffsetDateTime, nextPage: Option[Int])(implicit now: OffsetDateTime)
 
 <div class="row grid" data-masonry='{ "itemSelector": ".grid-item" }'>
     @for(article <- articles) {
@@ -29,7 +29,7 @@
                     }
 
                     <a href="@article.link" class="source text-nowrap" target="_blank">
-                        <span class="since" date="@article.dateUTC">@article.since</span> &raquo;
+                        <span class="since" date="@article.date">@article.since</span> &raquo;
                     </a>
 
                     <ul class="follow-buttons">

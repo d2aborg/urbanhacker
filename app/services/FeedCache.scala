@@ -4,15 +4,17 @@ import java.io.StringReader
 import java.net.{HttpURLConnection, URI}
 import java.security.cert.X509Certificate
 import java.security.{MessageDigest, SecureRandom}
+import java.time.{OffsetDateTime, ZoneOffset}
 import java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
 import java.time.temporal.ChronoUnit
-import java.time.{LocalDateTime, ZoneOffset}
 import javax.net.ssl._
 
+import akka.actor.ActorSystem
 import com.google.inject.{Inject, Singleton}
 import model.Utils._
 import model._
-import play.api.Logger
+import play.api.{Configuration, Logger}
+import play.api.inject.ApplicationLifecycle
 
 import scala.collection.{SortedSet, mutable}
 import scala.concurrent.duration._
@@ -21,7 +23,14 @@ import scala.io.Source
 import scala.xml.XML
 
 @Singleton
-class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext) {
+class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, actorSystem: ActorSystem, lifecycle: ApplicationLifecycle)(implicit exec: ExecutionContext) {
+  val reloadTask = actorSystem.scheduler.schedule(15 seconds, 30 minutes) {
+    reload()
+  }
+  lifecycle.addStopHook { () =>
+    Logger.info("Cancelling reload task...")
+    Future.successful(reloadTask.cancel)
+  }
 
   // configure the SSLContext with a permissive TrustManager
   val ctx = SSLContext.getInstance("TLS")
@@ -34,12 +43,12 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
   }), new SecureRandom())
   SSLContext.setDefault(ctx)
 
-  val sections: List[String] = List("news", "blogs")
+  val sections: Seq[String] = configuration.getConfig("sections").getOrElse(Configuration.empty).subKeys.toSeq
   val cache: mutable.Map[String, mutable.Map[URI, Feed]] = mutable.Map(sections.map { section =>
     (section, mutable.Map(loadChains(section).map(_.byUrl): _*))
   }: _*)
 
-  def frequency(articles: SortedSet[Article], timestamp: LocalDateTime): Double = {
+  def frequency(articles: SortedSet[Article], timestamp: OffsetDateTime): Double = {
     val mostRecent = articles take 10
     val ranges = (timestamp +: mostRecent.map(_.date).toSeq).sliding(2)
     val periods = ranges.map(range => ChronoUnit.SECONDS.between(range.last, range.head))
@@ -49,12 +58,27 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
     1.0 / weightedAveragePeriod
   }
 
-  def apply(section: String, timestamp: LocalDateTime): Seq[Article] =
-    cache synchronized {
+  def apply(section: String, timestamp: OffsetDateTime, pageNum: Int, pageSize: Int): (Seq[Article], OffsetDateTime, Option[Int]) = {
+    val (allArticles, latestTimestamp) = articles(section, timestamp)
+    val (page, hasMore) = paged(allArticles, pageNum, pageSize)
+    val nextPage = if (hasMore) Some(pageNum + 1) else None
+    (page, latestTimestamp, nextPage)
+  }
+
+  def paged(all: Seq[Article], pageNum: Int, pageSize: Int): (Seq[Article], Boolean) = {
+    val from = (pageNum - 1) * pageSize
+    val until = pageNum * pageSize
+    (all.slice(from, until), all.size > until)
+  }
+
+  def articles(section: String, timestamp: OffsetDateTime): (Seq[Article], OffsetDateTime) = {
+    val feeds = cache synchronized {
       cache(section) values
-    }.groupBy(_.source.group).values.map {
-      _.flatMap(_.latestAt(timestamp))
-    }.map { feedGroup =>
+    }.flatMap {
+      _.latestAt(timestamp)
+    }
+
+    val articles = feeds.groupBy(_.source.group).values.map { feedGroup =>
       Article.uniqueSorted(feedGroup.flatMap(_.articles))
     }.filter {
       _.nonEmpty
@@ -64,6 +88,11 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
     }.toSeq.sorted(Ordering.by[(Double, Article), Double](_._1)).map {
       _._2
     }
+
+    val latestTimestamp = feeds.map(_.metaData.timestamp).max
+
+    (articles, latestTimestamp)
+  }
 
   def latest(section: String, source: FeedSource): Option[Feed] = cache synchronized {
     cache(section) get source.url
@@ -121,15 +150,17 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
     }
 
   def loadChain(source: FeedSource): Future[Option[Feed]] = {
-    feedStore.load(source.url).map {
-      _.foldLeft(None: Option[Feed]) { (previous, download) =>
+    feedStore.load(source.url).map { downloads =>
+      val parsed = downloads.foldLeft(None: Option[Feed]) { (previous, download) =>
         parse(source, download, previous)
       }
+      Logger.info("Parsed: " + parsed.map(_.copy(articles = SortedSet())))
+      parsed
     }
   }
 
   def download(source: FeedSource, previous: Option[Feed] = None): Future[Option[Feed]] = {
-    val timestamp = LocalDateTime.now
+    val timestamp = OffsetDateTime.now(ZoneOffset.UTC)
 
     try {
       val connection = source.url.toURL.openConnection.asInstanceOf[HttpURLConnection]
@@ -147,7 +178,7 @@ class FeedCache @Inject()(feedStore: FeedStore)(implicit exec: ExecutionContext)
       }
 
       previous map (_.metaData) flatMap (_.lastModified) orElse {
-        previous map (_.metaData.timestamp.atOffset(ZoneOffset.UTC).format(RFC_1123_DATE_TIME))
+        previous map (_.metaData.timestamp.format(RFC_1123_DATE_TIME))
       } foreach { lastModified =>
         connection setRequestProperty("If-Modified-Since", lastModified)
       }

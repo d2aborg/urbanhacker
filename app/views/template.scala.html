@@ -1,6 +1,6 @@
-@(section: String)(content: Html)(js: Html)(implicit request: Request[AnyContent])
+@import play.api.Configuration
 
-@import scala.xml._
+@(section: String, title: String)(content: Html)(js: Html)(implicit feedSections: Configuration, request: Request[AnyContent])
 
 <!DOCTYPE html>
 <html lang="en" prefix="og: http://ogp.me/ns#">
@@ -10,10 +10,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Bootstrap: The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
 
-    <title>@section | Urban Hacker</title>
+    <title>@if(request.path != "/") {@title · }Urban Hacker</title>
     <link rel="shortcut icon" type="image/png" href='@routes.Assets.versioned("images/noun_13217_cc_t3.png")'>
 
-    <meta property="og:title" content="@section | UrbanHacker" />
+    <meta property="og:title" content='@if(request.path != "/") {@title · }Urban Hacker' />
     <meta property="og:type" content="website" />
     <meta property="og:image" content='@routes.Assets.versioned("images/noun_13217_cc_t3.png")' />
     <meta property="og:url" content="http://urbanhacker.news@request.uri" />
@@ -62,24 +62,21 @@
         </div>
         <div id="navbar" class="navbar-collapse collapse">
             <ul class="nav navbar-nav navbar-right">
-                <li class='@if(section == "News") {active}'><a href="/">News</a></li>
-                <li class='@if(section == "Blogs") {active}'><a href="/blogs">Blogs</a></li>
-                <li class='@if(section == "About") {active}'><a href="/about">About</a></li>
+                @for(feedSection <- feedSections.subKeys) {
+                    <li class='@if(section == feedSection) {active}'><a href='/@if(feedSection == "news") {} else {@feedSection}'>@feedSections.getString(feedSection).get</a></li>
+                }
+                <li class='@if(section == "about") {active}'><a href="/about">About</a></li>
             </ul>
         </div><!--/.nav-collapse -->
     </div>
 </nav>
 
 <div class="container">
-
-    <h1><a href="/"><span class="text-nowrap">( Urban Hacker )</span></a></h1>
-
     @content
 
     <div class="footer">
         <p>&copy; <a href="http://d2ab.org">Daniel Skogquist Åborg</a> 2016</p>
     </div>
-
 </div> <!-- /container -->
 
 <!-- JQuery -->

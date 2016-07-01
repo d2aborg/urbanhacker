@@ -1,12 +1,13 @@
+@import java.time.OffsetDateTime
 @import model.Article
-@import java.time.LocalDateTime
+@import play.api.Configuration
 
-@(section: String, articles: Seq[Article], nextPage: Option[Int], timestamp: LocalDateTime)(implicit now: LocalDateTime, request: Request[AnyContent])
+@(section: String, articles: Seq[Article], timestamp: OffsetDateTime, nextPage: Option[Int])(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
 
-@template(section) {
-    @page(articles, nextPage, timestamp)
+@template(section, feedSections.getString(section).get) {
+    <h1><a href="?timestamp=@timestamp">@feedSections.getString(section).get</a></h1>
 
-    <div class="more-content" style="display:hidden"></div>
+    @page(articles, timestamp, nextPage)
 } {
     <script type="text/javascript">
         function loadMore() {

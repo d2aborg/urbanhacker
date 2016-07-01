@@ -1,6 +1,7 @@
 import java.time.Clock
 
 import com.google.inject.AbstractModule
+import play.api.Configuration
 import services.FeedCache
 
 /**
@@ -14,12 +15,10 @@ import services.FeedCache
  * configuration file.
  */
 class Module extends AbstractModule {
-
   override def configure() = {
     // Use the system clock as the default implementation of Clock
     bind(classOf[Clock]).toInstance(Clock.systemDefaultZone)
 
     bind(classOf[FeedCache]).asEagerSingleton()
   }
-
 }
