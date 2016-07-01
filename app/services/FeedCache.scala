@@ -24,7 +24,7 @@ import scala.xml.XML
 
 @Singleton
 class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, actorSystem: ActorSystem, lifecycle: ApplicationLifecycle)(implicit exec: ExecutionContext) {
-  val reloadTask = actorSystem.scheduler.schedule(15 seconds, 30 minutes) {
+  val reloadTask = actorSystem.scheduler.schedule(1 minute, 30 minutes) {
     reload()
   }
   lifecycle.addStopHook { () =>
@@ -189,9 +189,7 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
           return Future(None)
 
         Source.fromInputStream(connection.getInputStream, Option(connection.getContentEncoding).getOrElse("UTF-8")).mkString
-      } finally {
-        connection disconnect()
-      }
+      } finally connection disconnect()
 
       Logger.info("Downloaded: " + source.url)
 
