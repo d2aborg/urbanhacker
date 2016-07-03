@@ -5,51 +5,33 @@ import java.sql.Timestamp
 import java.time.temporal.ChronoUnit
 import java.time.{OffsetDateTime, ZoneOffset}
 
-import model.Utils.{nonEmpty, unescape}
+import model.Utils.{nonEmpty, parseURI, unescape}
 import play.api.Logger
 import slick.driver.PostgresDriver.api._
 import slick.lifted.Tag
 
-import scala.collection.SortedSet
 import scala.xml.{Elem, Node, NodeSeq}
 
-case class Feed(source: FeedSource, metaData: MetaData, previous: Option[Feed], articles: SortedSet[Article]) {
+case class Feed(source: FeedSource, metaData: MetaData, articles: Seq[Article]) {
   def articlesPerSecond: Double = {
     val mostRecent = articles take 10
     val secondsBetween = ChronoUnit.SECONDS.between(mostRecent.last.date, mostRecent.head.date)
     mostRecent.size.toDouble / secondsBetween
   }
-
-  def url: URI = source.url
-
-  def byUrl: (URI, Feed) = source.url -> this
-
-  def allArticles: SortedSet[Article] = Article.uniqueSorted(allArticles2)
-
-  def allArticles2: SortedSet[Article] =
-    articles ++ previous.map(_.allArticles2).getOrElse(Nil)
-
-  def latestAt(timestamp: OffsetDateTime): Option[Feed] =
-    if (newerThan(timestamp))
-      previous.flatMap(_.latestAt(timestamp))
-    else
-      Some(this)
-
-  def newerThan(timestamp: OffsetDateTime): Boolean = metaData.timestamp.isAfter(timestamp)
 }
 
 object Feed {
-  def parse(source: FeedSource, download: XmlDownload, previous: Option[Feed]): Option[Feed] = {
+  def parse(source: FeedSource, download: XmlDownload): Option[Feed] = {
     val rssChannel = download.xml \\ "channel"
     if (rssChannel.nonEmpty) {
-      return Some(Feed.rss(source, download, rssChannel(0), previous) { source =>
+      return Some(Feed.rss(source, download, rssChannel(0)) { source =>
         for (item <- download.xml \\ "item")
           yield Article.rss(source, item(0))
       })
     }
 
     if (download.xml.label == "feed") {
-      return Some(Feed.atom(source, download, download.xml(0), previous) { source =>
+      return Some(Feed.atom(source, download, download.xml(0)) { source =>
         for (entry <- download.xml \\ "entry")
           yield Article.atom(source, entry(0))
       })
@@ -59,19 +41,19 @@ object Feed {
     None
   }
 
-  def rss(source: FeedSource, download: XmlDownload, channel: Node, previous: Option[Feed])
-         (articles: (FeedSource) => Iterable[Option[Article]]): Feed = {
+  def rss(source: FeedSource, download: XmlDownload, channel: Node)
+         (articles: (FeedSource) => Seq[Option[Article]]): Feed = {
     val title = nonEmpty(cleanTitle(channel \ "title"))
 
-    val siteUrl = nonEmpty(unescape(channel \ "link")).map(new URI(_))
+    val siteUrl = nonEmpty(unescape(channel \ "link")).flatMap(parseURI)
 
     val appliedSource = source.copy(siteUrl = source.siteUrl.orElse(siteUrl), title = source.title.orElse(title))
 
-    new Feed(appliedSource, download.metaData, previous, Article.uniqueSorted(articles(appliedSource).flatten))
+    new Feed(appliedSource, download.metaData, articles(appliedSource).flatten)
   }
 
-  def atom(source: FeedSource, download: XmlDownload, feedRoot: Node, previous: Option[Feed])
-          (articles: (FeedSource) => Iterable[Option[Article]]): Feed = {
+  def atom(source: FeedSource, download: XmlDownload, feedRoot: Node)
+          (articles: (FeedSource) => Seq[Option[Article]]): Feed = {
     val title = nonEmpty(cleanTitle(if ((feedRoot \ "title" text) nonEmpty) feedRoot \ "title" else feedRoot \ "id"))
 
     val siteUrl = nonEmpty((feedRoot \ "link").filterNot { l =>
@@ -85,7 +67,7 @@ object Feed {
 
     val appliedSource = source.copy(siteUrl = source.siteUrl.orElse(siteUrl), title = source.title.orElse(title))
 
-    new Feed(appliedSource, download.metaData, previous, Article.uniqueSorted(articles(appliedSource).flatten))
+    new Feed(appliedSource, download.metaData, articles(appliedSource).flatten)
   }
 
   def cleanTitle(title: NodeSeq): String = unescape(title)
@@ -135,7 +117,7 @@ object downloads extends TableQuery(new TextDownloads(_)) {
 
 case class XmlDownload(metaData: MetaData, xml: Elem)
 
-case class FeedSource(url: URI, group: String, siteUrl: Option[URI] = None, title: Option[String] = None) {
+case class FeedSource(section: String, url: URI, group: String, siteUrl: Option[URI] = None, title: Option[String] = None) {
   def favicon: Option[URI] =
     siteUrl.map(_.resolve("/favicon.ico"))
 }

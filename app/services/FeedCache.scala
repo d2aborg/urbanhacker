@@ -1,24 +1,24 @@
 package services
 
 import java.io.StringReader
-import java.net.{HttpURLConnection, URI}
+import java.net.HttpURLConnection
 import java.security.cert.X509Certificate
 import java.security.{MessageDigest, SecureRandom}
-import java.time.{OffsetDateTime, ZoneOffset}
 import java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
 import java.time.temporal.ChronoUnit
+import java.time.{OffsetDateTime, ZoneOffset}
 import javax.net.ssl._
 
 import akka.actor.ActorSystem
 import com.google.inject.{Inject, Singleton}
 import model.Utils._
 import model._
-import play.api.{Configuration, Logger}
 import play.api.inject.ApplicationLifecycle
+import play.api.{Configuration, Logger}
 
-import scala.collection.{SortedSet, mutable}
+import scala.collection.{SortedMap, SortedSet, mutable}
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.io.Source
 import scala.xml.XML
 
@@ -43,10 +43,19 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
   }), new SecureRandom())
   SSLContext.setDefault(ctx)
 
-  val sections: Seq[String] = configuration.getConfig("sections").getOrElse(Configuration.empty).subKeys.toSeq
-  val cache: mutable.Map[String, mutable.Map[URI, Feed]] = mutable.Map(sections.map { section =>
-    (section, mutable.Map(loadChains(section).map(_.byUrl): _*))
-  }: _*)
+  val sections: Set[String] = configuration.getConfig("sections").getOrElse(Configuration.empty).subKeys
+  val cache: mutable.Map[FeedSource, CachedFeed] = mutable.Map.empty
+  prime()
+
+  case class CachedFeed(source: FeedSource, feed: Feed, previous: Option[CachedFeed]) {
+    def articles: Seq[Article] =
+      feed.articles ++ previous.map(_.articles).getOrElse(Nil)
+
+    def historic(timestamp: OffsetDateTime): Option[CachedFeed] = feed.metaData.timestamp match {
+      case myTimestamp if myTimestamp.isAfter(timestamp) => previous.flatMap(_.historic(timestamp))
+      case _ => Some(this)
+    }
+  }
 
   def frequency(articles: SortedSet[Article], timestamp: OffsetDateTime): Double = {
     val mostRecent = articles take 10
@@ -58,109 +67,97 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
     1.0 / weightedAveragePeriod
   }
 
-  def apply(section: String, timestamp: OffsetDateTime, pageNum: Int, pageSize: Int): (Seq[Article], OffsetDateTime, Option[Int]) = {
+  def apply(section: String, timestamp: OffsetDateTime, pageNum: Int, pageSize: Int): (Iterable[Article], OffsetDateTime, Option[Int]) = {
     val (allArticles, latestTimestamp) = articles(section, timestamp)
     val (page, hasMore) = paged(allArticles, pageNum, pageSize)
-    val nextPage = if (hasMore) Some(pageNum + 1) else None
+    val nextPage = Some(pageNum + 1).filter(_ => hasMore)
     (page, latestTimestamp, nextPage)
   }
 
-  def paged(all: Seq[Article], pageNum: Int, pageSize: Int): (Seq[Article], Boolean) = {
-    val from = (pageNum - 1) * pageSize
-    val until = pageNum * pageSize
+  def paged(all: Iterable[Article], page: Int, pageSize: Int): (Iterable[Article], Boolean) = {
+    val from = (page - 1) * pageSize
+    val until = page * pageSize
     (all.slice(from, until), all.size > until)
   }
 
-  def articles(section: String, timestamp: OffsetDateTime): (Seq[Article], OffsetDateTime) = {
-    val feeds = cache synchronized {
-      cache(section) values
+  def articles(section: String, timestamp: OffsetDateTime): (Iterable[Article], OffsetDateTime) = {
+    val historicCachedFeeds = cache synchronized {
+      cache.filterKeys(_.section == section).values
     }.flatMap {
-      _.latestAt(timestamp)
+      _.historic(timestamp)
     }
 
-    val articles = feeds.groupBy(_.source.group).values.map { feedGroup =>
-      Article.uniqueSorted(feedGroup.flatMap(_.articles))
-    }.filter {
-      _.nonEmpty
-    }.flatMap { articleGroup =>
-      val groupFrequency = frequency(articleGroup, timestamp)
-      articleGroup.toSeq.map(article => (article.frecency(groupFrequency, timestamp), article))
-    }.toSeq.sorted(Ordering.by[(Double, Article), Double](_._1)).map {
-      _._2
+    val historicTimestamp = historicCachedFeeds.map(_.feed.metaData.timestamp)
+      .reduceOption(implicitly[Ordering[OffsetDateTime]].max) getOrElse timestamp
+
+    val articlesByFrecency = SortedMap[Double, Article]() ++ historicCachedFeeds.groupBy(_.source.group).mapValues {
+      case cachedFeeds => cachedFeeds.flatMap(_.articles).groupBy(_.link).values.map(_.max).to[SortedSet]
+    }.flatMap {
+      case (_, articles) if articles nonEmpty => byFrecency(articles, historicTimestamp)
+      case _ => Nil
     }
 
-    val latestTimestamp = feeds.map(_.metaData.timestamp).max
-
-    (articles, latestTimestamp)
+    (articlesByFrecency.values, historicTimestamp)
   }
 
-  def latest(section: String, source: FeedSource): Option[Feed] = cache synchronized {
-    cache(section) get source.url
+  def byFrecency(articles: SortedSet[Article], timestamp: OffsetDateTime): Seq[(Double, Article)] = {
+    val groupFrequency = frequency(articles, timestamp)
+    articles.toSeq.map(article => (article.frecency(groupFrequency, timestamp), article))
+  }
+
+  def latest(source: FeedSource): Option[CachedFeed] = cache synchronized {
+    cache get source
+  }
+
+  def prime(): Unit = {
+    Logger.info("Priming...")
+
+    for ((successful, total) <- update(loadOrDownload(_)))
+      Logger.info("Primed " + successful + "/" + total)
   }
 
   def reload(): Unit = {
     Logger.info("Reloading...")
 
-    val feedBatches = for (section <- sections) yield (section, downloadAll(section))
+    for ((successful, total) <- update(download(_)))
+      Logger.info("Reloaded " + successful + "/" + total)
+  }
 
-    for ((section, eventualAllParsed) <- feedBatches; eventualParsed <- eventualAllParsed) {
-      eventualParsed.onSuccess {
-        case Some(feed) =>
-          cache synchronized {
-            cache(section)(feed.url) = feed
-            Logger.info("Updated: " + feed.source.url)
-          }
+  def update(loadEventualMaybeFeedsBySource: FeedSource => Future[Option[CachedFeed]]): Future[(Int, Int)] = {
+    val eventualMaybeCachedFeeds = loadSources map loadEventualMaybeFeedsBySource
+
+    for {
+      eventualMaybeCachedFeed <- eventualMaybeCachedFeeds
+      maybeCachedFeed <- eventualMaybeCachedFeed
+      cachedFeed <- maybeCachedFeed
+    } cache synchronized {
+      cache(cachedFeed.source) = cachedFeed
+      Logger.info("Cached: " + cachedFeed.source.url)
+    }
+
+    for (maybeCachedFeeds <- Future sequence eventualMaybeCachedFeeds)
+      yield (maybeCachedFeeds.flatten.size, maybeCachedFeeds.size)
+  }
+
+  def download(source: FeedSource): Future[Option[CachedFeed]] =
+    download(source, latest(source))
+
+  def loadOrDownload(source: FeedSource): Future[Option[CachedFeed]] =
+    load(source) flatMap {
+      case maybeCachedFeed: Some[CachedFeed] => Future.successful(maybeCachedFeed)
+      case None => download(source)
+    }
+
+  def load(source: FeedSource): Future[Option[CachedFeed]] =
+    feedStore.load(source.url).flatMap { downloads =>
+      Future.sequence(downloads.map(parse(source, _))).map {
+        _.flatten.foldLeft(None: Option[CachedFeed]) { (previous, feed) =>
+          Some(CachedFeed(source, feed, previous))
+        }
       }
     }
 
-    val eventuallyDownloaded = feedBatches flatMap (_._2)
-    Future sequence eventuallyDownloaded foreach { downloaded =>
-      Logger.info("Updated " + downloaded.flatten.size + "/" + eventuallyDownloaded.size)
-    }
-  }
-
-  def downloadAll(section: String): Seq[Future[Option[Feed]]] =
-    for (source <- loadSources(section))
-      yield download(section, source)
-
-  def download(section: String, source: FeedSource): Future[Option[Feed]] =
-    download(source, latest(section, source))
-
-  def save(feed: Feed, download: TextDownload): Future[Option[Feed]] = {
-    if (feed.previous.map(_.metaData).map(_.checksum).contains(feed.metaData.checksum))
-      return Future(None)
-
-    if (feed.previous.map(_.articles).contains(feed.articles))
-      return Future(None)
-
-    feedStore.save(download).map(if (_) Some(feed) else None)
-  }
-
-  def loadChains(section: String): Seq[Feed] = {
-    Await.result(Future.traverse {
-      loadSources(section)
-    } { source =>
-      loadChainOrDownload(source)
-    }, 10 minutes) flatten
-  }
-
-  def loadChainOrDownload(source: FeedSource): Future[Option[Feed]] =
-    loadChain(source) flatMap { f =>
-      if (f isEmpty) download(source)
-      else Future(f)
-    }
-
-  def loadChain(source: FeedSource): Future[Option[Feed]] = {
-    feedStore.load(source.url).map { downloads =>
-      val parsed = downloads.foldLeft(None: Option[Feed]) { (previous, download) =>
-        parse(source, download, previous)
-      }
-      Logger.info("Parsed: " + parsed.map(_.copy(articles = SortedSet())))
-      parsed
-    }
-  }
-
-  def download(source: FeedSource, previous: Option[Feed] = None): Future[Option[Feed]] = {
+  def download(source: FeedSource, previous: Option[CachedFeed]): Future[Option[CachedFeed]] = {
     val timestamp = OffsetDateTime.now(ZoneOffset.UTC)
 
     try {
@@ -174,61 +171,81 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
       }
       connection setRequestProperty("User-Agent", "UrbanHacker/0.1")
 
-      previous map (_.metaData) flatMap (_.eTag) foreach { eTag =>
+      previous map (_.feed.metaData) flatMap (_.eTag) foreach { eTag =>
         connection setRequestProperty("If-None-Match", eTag)
       }
 
-      previous map (_.metaData) flatMap (_.lastModified) orElse {
-        previous map (_.metaData.timestamp.format(RFC_1123_DATE_TIME))
+      previous map (_.feed.metaData) flatMap (_.lastModified) orElse {
+        previous map (_.feed.metaData.timestamp.format(RFC_1123_DATE_TIME))
       } foreach { lastModified =>
         connection setRequestProperty("If-Modified-Since", lastModified)
       }
 
-      val content = try {
-        connection connect()
-        if (connection.getResponseCode == 304)
-          return Future(None)
+      val eventualMaybeContent = Future {
+        try {
+          connection connect()
+          if (connection.getResponseCode == 304)
+            None
+          else
+            Some(Source.fromInputStream(connection.getInputStream, Option(connection.getContentEncoding).getOrElse("UTF-8")).mkString)
+        } finally connection disconnect()
+      }
 
-        Source.fromInputStream(connection.getInputStream, Option(connection.getContentEncoding).getOrElse("UTF-8")).mkString
-      } finally connection disconnect()
+      eventualMaybeContent.flatMap {
+        case Some(content) =>
+          Logger.info("Downloaded: " + source.url)
 
-      Logger.info("Downloaded: " + source.url)
+          val metaData = MetaData(source.url,
+            Option(connection getHeaderField "Last-Modified"),
+            Option(connection getHeaderField "ETag"),
+            md5(content), timestamp)
 
-      val metaData = MetaData(source.url,
-        Option(connection getHeaderField "Last-Modified"),
-        Option(connection getHeaderField "ETag"),
-        md5(content), timestamp)
+          val download = TextDownload(0, metaData, content)
 
-      val download = TextDownload(0, metaData, content)
-
-      parse(source, download, previous).fold {
-        Future(None): Future[Option[Feed]]
-      } { save(_, download) }
+          parse(source, download).flatMap {
+            case Some(feed) => save(source, CachedFeed(source, feed, previous), download)
+            case _ => Future.successful(None)
+          }
+        case _ => Future.successful(None)
+      }
     } catch {
       case e: Exception =>
         Logger.warn("Failed to download: " + source.url, e)
-        Future(None)
+        Future.failed(e)
     }
   }
 
   def md5(data: String): String =
     MessageDigest.getInstance("MD5").digest(data.getBytes("UTF-8")).map("%02x".format(_)).mkString
 
-  def parse(source: FeedSource, textDownload: TextDownload, previous: Option[Feed]): Option[Feed] = {
+  def parse(source: FeedSource, textDownload: TextDownload): Future[Option[Feed]] = Future {
     val xml = XML.load(new StringReader(textDownload.content))
     val xmlDownload = XmlDownload(textDownload.metaData, xml)
-    Feed.parse(source, xmlDownload, previous)
+    Feed.parse(source, xmlDownload)
   }
 
-  def loadSources(section: String): Seq[FeedSource] =
-    Source.fromFile(s"feeds.$section.txt").getLines
-      .map(_.trim)
-      .filterNot(line => line.startsWith("#") || line.isEmpty) map { line =>
-      line.split("\\|") match {
-        case Array(feedUrl) => FeedSource(new URI(feedUrl), feedUrl)
-        case Array(feedUrl, group) => FeedSource(new URI(feedUrl), nonEmpty(group, feedUrl))
-        case Array(feedUrl, group, siteUrl) => FeedSource(new URI(feedUrl), nonEmpty(group, feedUrl), nonEmpty(siteUrl).map(new URI(_)))
-        case Array(feedUrl, group, siteUrl, title) => FeedSource(new URI(feedUrl), nonEmpty(group, feedUrl), nonEmpty(siteUrl).map(new URI(_)), nonEmpty(title))
-      }
-    } toSeq
+  def save(source: FeedSource, cachedFeed: CachedFeed, download: TextDownload): Future[Option[CachedFeed]] = {
+    if (cachedFeed.previous.map(_.feed.metaData.checksum).contains(cachedFeed.feed.metaData.checksum))
+      return Future.successful(None)
+
+    if (cachedFeed.previous.map(_.feed.articles).contains(cachedFeed.feed.articles))
+      return Future.successful(None)
+
+    feedStore.save(download).map(if (_) Some(cachedFeed) else None)
+  }
+
+  def loadSources: Set[FeedSource] =
+    for {
+      section <- sections
+      line <- Source.fromFile(s"feeds.$section.txt").getLines.map(_.trim) if !line.startsWith("#") && !line.isEmpty
+      source <- parseSource(section, line)
+    } yield source
+
+
+  def parseSource(section: String, line: String): Option[FeedSource] = line.split("\\|") match {
+    case Array(feedUrl) => parseURI(feedUrl).map(FeedSource(section, _, feedUrl))
+    case Array(feedUrl, group) => parseURI(feedUrl).map(FeedSource(section, _, nonEmpty(group, feedUrl)))
+    case Array(feedUrl, group, siteUrl) => parseURI(feedUrl).map(FeedSource(section, _, nonEmpty(group, feedUrl), parseURI(siteUrl)))
+    case Array(feedUrl, group, siteUrl, title) => parseURI(feedUrl).map(FeedSource(section, _, nonEmpty(group, feedUrl), parseURI(siteUrl), nonEmpty(title)))
+  }
 }

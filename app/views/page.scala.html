@@ -1,7 +1,7 @@
 @import model.Article
 @import java.time.OffsetDateTime
 
-@(articles: Seq[Article], timestamp: OffsetDateTime, nextPage: Option[Int])(implicit now: OffsetDateTime)
+@(articles: Iterable[Article], timestamp: OffsetDateTime, nextPage: Option[Int])(implicit now: OffsetDateTime)
 
 <div class="row grid" data-masonry='{ "itemSelector": ".grid-item" }'>
     @for(article <- articles) {

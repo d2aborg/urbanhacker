@@ -76,6 +76,7 @@ https://blog.twitter.com/api/blog.rss?name=engineering
 http://dev.sortable.com/feed.xml
 http://feeds.feedblitz.com/atomicspin
 https://code.facebook.com/posts/rss
+https://medium.freecodecamp.com/feed
 
 # Tool Blogs
 http://blog.jquery.com/feed/

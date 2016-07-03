@@ -24,8 +24,8 @@ import scala.math.max
 import scala.xml._
 import scala.xml.parsing.NoBindingFactoryAdapter
 
-class Article(val source: FeedSource, val title: String, val link: String, val commentsLink: Option[String],
-              val date: OffsetDateTime, val image: Option[URI], val text: String) extends Ordered[Article] {
+case class Article(source: FeedSource, title: String, link: String, commentsLink: Option[String],
+                   date: OffsetDateTime, image: Option[URI], text: String) extends Ordered[Article] {
   val maxSummaryLength = 250
 
   override def compare(that: Article): Int = -date.compareTo(that.date)
@@ -69,17 +69,6 @@ class Article(val source: FeedSource, val title: String, val link: String, val c
 
     crop(text, maxSummaryLength)
   }
-
-  def canEqual(other: Any): Boolean = other.isInstanceOf[Article]
-
-  override def equals(other: Any): Boolean = other match {
-    case that: Article =>
-      (that canEqual this) &&
-        link == that.link
-    case _ => false
-  }
-
-  override def hashCode(): Int = Seq(link).map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
 }
 
 object Article {
@@ -98,8 +87,6 @@ object Article {
       !lang.isPresent || lang.asSet.contains(LdLocale.fromString("en"))
     }
   }
-
-  def uniqueSorted(articles: Iterable[Article]): SortedSet[Article] = articles.toSet[Article].to[SortedSet]
 
   def rss(source: FeedSource, item: Node): Option[Article] = {
     val title = stripTitle(unescape(item \ "title"), source)

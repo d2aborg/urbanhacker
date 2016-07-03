@@ -2,7 +2,7 @@
 @import model.Article
 @import play.api.Configuration
 
-@(section: String, articles: Seq[Article], timestamp: OffsetDateTime, nextPage: Option[Int])(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
+@(section: String, articles: Iterable[Article], timestamp: OffsetDateTime, nextPage: Option[Int])(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
 
 @template(section, feedSections.getString(section).get) {
     <h1><a href="?timestamp=@timestamp">@feedSections.getString(section).get</a></h1>
