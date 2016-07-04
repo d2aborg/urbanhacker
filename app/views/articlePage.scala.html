@@ -1,7 +1,7 @@
 @import model.Article
 @import java.time.OffsetDateTime
 
-@(articles: Iterable[Article], timestamp: OffsetDateTime, nextPage: Option[Int])(implicit now: OffsetDateTime)
+@(section: String, articles: Iterable[Article], timestamp: OffsetDateTime, page: Int, nextPage: Option[Int])(implicit now: OffsetDateTime)
 
 <div class="row grid" data-masonry='{ "itemSelector": ".grid-item" }'>
     @for(article <- articles) {
@@ -57,7 +57,7 @@
     <div class="row load-more">
         <div class="col-md-12">
             <h3>
-                <a href="?page=@nextPage&timestamp=@timestamp" onclick="loadMore(); return false">More &hellip;</a>
+                <a href="@routes.HomeController.articles(section, timestamp.toString, nextPage)" onclick="loadMore(); return false">Load More &hellip;</a>
             </h3>
         </div>
     </div>

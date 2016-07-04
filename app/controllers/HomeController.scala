@@ -3,6 +3,8 @@ package controllers
 import java.time.{OffsetDateTime, ZoneOffset}
 import javax.inject._
 
+import model.Utils
+import model.Utils.nonEmpty
 import play.api.Configuration
 import play.api.mvc._
 import services.FeedCache
@@ -23,15 +25,15 @@ class HomeController @Inject()(feedCache: FeedCache, configuration: Configuratio
     Ok(views.html.about())
   }
 
-  def articles(section: String, timestamp: Option[String], page: Option[Int]) = Action { implicit request =>
+  def articles(section: String, timestamp: String = "", page: Int = 1) = Action { implicit request =>
     implicit val now = OffsetDateTime.now(ZoneOffset.UTC)
 
-    val timestampOrNow = timestamp.flatMap(t => Try(OffsetDateTime.parse(t)).toOption) getOrElse now
-    val (articles, latestTimestamp, nextPage) = feedCache(section, timestampOrNow, page getOrElse 1, 15)
+    val timestampOrNow = nonEmpty(timestamp).flatMap(t => Try(OffsetDateTime.parse(t)).toOption) getOrElse now
+    val (articles, latestTimestamp, nextPage) = feedCache(section, timestampOrNow, page, 15)
 
     if (request.getQueryString("ajax") isEmpty)
-      Ok(views.html.articles(section, articles, latestTimestamp, nextPage))
+      Ok(views.html.articleMain(section, articles, latestTimestamp, page, nextPage))
     else
-      Ok(views.html.page(articles, latestTimestamp, nextPage))
+      Ok(views.html.articlePage(section, articles, latestTimestamp, page, nextPage))
   }
 }

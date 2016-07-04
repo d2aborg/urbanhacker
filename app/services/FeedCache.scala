@@ -114,6 +114,8 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
 
     for ((successful, total) <- update(loadOrDownload(_)))
       Logger.info("Primed " + successful + "/" + total)
+
+    Logger.info("Exiting prime...")
   }
 
   def reload(): Unit = {
@@ -121,6 +123,8 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
 
     for ((successful, total) <- update(download(_)))
       Logger.info("Reloaded " + successful + "/" + total)
+
+    Logger.info("Exiting reload...")
   }
 
   def update(loadEventualMaybeFeedsBySource: FeedSource => Future[Option[CachedFeed]]): Future[(Int, Int)] = {
@@ -139,14 +143,14 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
       yield (maybeCachedFeeds.flatten.size, maybeCachedFeeds.size)
   }
 
-  def download(source: FeedSource): Future[Option[CachedFeed]] =
-    download(source, latest(source))
-
   def loadOrDownload(source: FeedSource): Future[Option[CachedFeed]] =
     load(source) flatMap {
       case maybeCachedFeed: Some[CachedFeed] => Future.successful(maybeCachedFeed)
       case None => download(source)
     }
+
+  def download(source: FeedSource): Future[Option[CachedFeed]] =
+  download(source, latest(source))
 
   def load(source: FeedSource): Future[Option[CachedFeed]] =
     feedStore.load(source.url).flatMap { downloads =>

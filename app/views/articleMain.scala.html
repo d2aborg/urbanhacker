@@ -2,12 +2,12 @@
 @import model.Article
 @import play.api.Configuration
 
-@(section: String, articles: Iterable[Article], timestamp: OffsetDateTime, nextPage: Option[Int])(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
+@(section: String, articles: Iterable[Article], timestamp: OffsetDateTime, page: Int, nextPage: Option[Int])(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
 
 @template(section, feedSections.getString(section).get) {
-    <h1><a href="?timestamp=@timestamp">@feedSections.getString(section).get</a></h1>
+    <h1><a href="@routes.HomeController.articles(section, timestamp.toString, page)">@feedSections.getString(section).get</a></h1>
 
-    @page(articles, timestamp, nextPage)
+    @articlePage(section, articles, timestamp, page, nextPage)
 } {
     <script type="text/javascript">
         function loadMore() {
@@ -24,7 +24,7 @@
 
             var grid = $('.grid')
 
-            $.ajax({ url: nextPageUrl + "&ajax=true" }).done(function(data) {
+            $.ajax({ url: nextPageUrl + ((nextPageUrl.indexOf('?') == -1) ? '?' : '&') + "ajax=true" }).done(function(data) {
                 var newContent = $("<div>").append(data)
 
                 var newItems = newContent.find("> .grid > .grid-item")
@@ -39,11 +39,12 @@
 
         $(document).ready(function() {
             var win = $(window);
+            var doc = $(document);
 
             // Each time the user scrolls
             win.scroll(function() {
                 // End of the document reached?
-                if ($(document).height() - win.height() < win.scrollTop() + 1000) {
+                if (doc.height() - (win.scrollTop() + win.height()) < 1000) {
                     loadMore();
                 }
             });
