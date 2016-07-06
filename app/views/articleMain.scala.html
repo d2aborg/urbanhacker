@@ -5,51 +5,54 @@
 
 @(section: String, articles: Iterable[Article], permalink: Permalink)(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
 
-@defining(permalink.requested.fold("Latest ")(_ => "") +
-          feedSections.getString(section).get +
-          permalink.requested.fold("")(_ => " as of " + permalink.viewTimestamp + Some(permalink.page).filter(_ > 1).fold("")(p => " · Page " + p))) { title =>
+@defining(feedSections.getString(section).get +
+          permalink.requested.fold("") { _ =>
+            " · " + permalink.viewTimestamp + Some(permalink.page).filter(_ > 1).fold("") { " · Page " + _ }
+          }) { title =>
     @template(section, title) {
         <h1><span class="urban">@feedSections.getString(section).get</span></h1>
 
         <p class="text-muted">
             <small>
                 @permalink.requested.fold {
-                    Latest @feedSections.getString(section).get
+                    <span class="text-nowrap">
+                        <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                        <a href='@routes.HomeController.articles(section, "", 1, None)'>Reload</a>
+                    </span>
 
                     <span class="text-muted">·</span>
-                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
-                    <a href='@routes.HomeController.articles(section, "", 1, None)'>Reload</a>
-
-                    <span class="text-muted">·</span>
-                    <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
-                    <a href="@routes.HomeController.articles(section, permalink.urlTimestamp, permalink.page, None)">Permalink &raquo;</a>
+                    <span class="text-nowrap">
+                        <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
+                        <a href="@routes.HomeController.articles(section, permalink.urlTimestamp, permalink.page, None)">Permalink &raquo;</a>
+                    </span>
                 } { _ =>
-                    <span class="permalink-timestamp" date="@permalink.timestamp">@permalink.viewTimestamp</span>
+                    <span class="text-nowrap">
+                        <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                        <a href='@routes.HomeController.articles(section, "", 1, None)'>Back to Latest</a>
+                    </span>
 
                     <span class="text-muted">·</span>
-                    <a href='@routes.HomeController.articles(section, "", 1, None)'>Back to Latest &laquo;</a>
+                    <span class="text-nowrap">
+                        <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
+                        <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, 1, None)'>
+                            <span class="permalink-timestamp" date="@permalink.timestamp">@permalink.viewTimestamp</span>
+                        </a>
+                    </span>
 
                     <span class="text-muted">·</span>
-                    @permalink.prevPage.fold {
-                        &laquo;
-                    } { prevPage =>
-                        <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, prevPage, None)'>&laquo;</a>
-                    }
-
-                    Page <span class="permalink-page">@permalink.page</span>
-
-                    @permalink.nextPage.fold {
-                        &raquo;
-                    } { nextPage =>
-                        <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, nextPage, None)'>&raquo;</a>
-                    }
-
-                    <span class="text-muted">·</span>
-                    @permalink.prevPage.fold {
-                        First Page &laquo;
-                    } { _ =>
-                        <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, 1, None)'>First Page &laquo;</a>
-                    }
+                    <span class="text-nowrap">
+                        @defining(Html("&laquo;")) { linkText =>
+                            @permalink.prevPage.fold(linkText) { prevPage =>
+                                <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, prevPage, None)'>@linkText</a>
+                            }
+                        }
+                        Page <span class="permalink-page">@permalink.page</span>
+                        @defining(Html("&raquo;")) { linkText =>
+                            @permalink.nextPage.fold(linkText) { nextPage =>
+                                <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, nextPage, None)'>@linkText</a>
+                            }
+                        }
+                    </span>
                 }
             </small>
         </p>

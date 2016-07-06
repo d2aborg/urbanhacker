@@ -10,10 +10,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Bootstrap: The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
 
-    <title>@if(request.path != "/") {@title} else {Urban Hacker}</title>
+    <title>@if(request.path != "/") {@title · }Urban Hacker</title>
     <link rel="shortcut icon" type="image/png" href='@routes.Assets.versioned("images/noun_13217_cc_t3.png")'>
 
-    <meta property="og:title" content='@if(request.path != "/") {@title} else {Urban Hacker}' />
+    <meta property="og:title" content='@if(request.path != "/") {@title · }Urban Hacker' />
     <meta property="og:type" content="website" />
     <meta property="og:image" content='@routes.Assets.versioned("images/noun_13217_cc_t3.png")' />
     <meta property="og:url" content="http://urbanhacker.news@request.uri" />
@@ -104,6 +104,13 @@
 
 <!-- Masonry -->
 <script src="https://npmcdn.com/masonry-layout@@4.0/dist/masonry.pkgd.min.js"></script>
+
+<!-- Infolinks -->
+<script type="text/javascript">
+var infolinks_pid = 2821036;
+var infolinks_wsid = 0;
+</script>
+<script type="text/javascript" src="http://resources.infolinks.com/js/infolinks_main.js"></script>
 
 <!-- App JS -->
 <script src='@routes.Assets.versioned("javascripts/app.js")' type="text/javascript"></script>

@@ -24,7 +24,7 @@ import scala.xml.XML
 
 @Singleton
 class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, actorSystem: ActorSystem, lifecycle: ApplicationLifecycle)(implicit exec: ExecutionContext) {
-  val reloadTask = actorSystem.scheduler.schedule(1 minute, 30 minutes) {
+  val reloadTask = actorSystem.scheduler.schedule(5 minutes, 30 minutes) {
     reload()
   }
   lifecycle.addStopHook { () =>
@@ -115,21 +115,21 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
   }
 
   def prime(): Unit = {
-    Logger.info("Priming...")
+    Logger.info("Initiating Priming...")
 
     for ((successful, total) <- update(loadOrDownload(_)))
-      Logger.info("Primed " + successful + "/" + total)
+      Logger.info("###> Primed " + successful + "/" + total)
 
-    Logger.info("Exiting prime...")
+    Logger.info("Priming initiated")
   }
 
   def reload(): Unit = {
-    Logger.info("Reloading...")
+    Logger.info("Initiating Reload...")
 
     for ((successful, total) <- update(download(_)))
-      Logger.info("Reloaded " + successful + "/" + total)
+      Logger.info("###> Reloaded " + successful + "/" + total)
 
-    Logger.info("Exiting reload...")
+    Logger.info("Reload initiated")
   }
 
   def update(loadEventualMaybeFeedsBySource: FeedSource => Future[Option[CachedFeed]]): Future[(Int, Int)] = {
@@ -141,7 +141,7 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
       cachedFeed <- maybeCachedFeed
     } cache synchronized {
       cache(cachedFeed.source) = cachedFeed
-      Logger.info("Cached: " + cachedFeed.source.url)
+      Logger.info("---> Cached: " + cachedFeed.source.url)
     }
 
     for (maybeCachedFeeds <- Future sequence eventualMaybeCachedFeeds)
@@ -157,6 +157,7 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
   def load(source: FeedSource): Future[Option[CachedFeed]] =
     feedStore.load(source.url).flatMap { downloads =>
       Future.sequence(downloads.map(parse(source, _))).map {
+        Logger.info("Loaded: " + source.url)
         _.flatten.foldLeft(None: Option[CachedFeed]) { (previous, feed) =>
           Some(CachedFeed(source, feed, previous))
         }
