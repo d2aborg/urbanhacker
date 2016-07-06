@@ -67,11 +67,16 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
     1.0 / weightedAveragePeriod
   }
 
-  def apply(section: String, timestamp: OffsetDateTime, pageNum: Int, pageSize: Int): (Iterable[Article], OffsetDateTime, Option[Int]) = {
-    val (allArticles, latestTimestamp) = articles(section, timestamp)
-    val (page, hasMore) = paged(allArticles, pageNum, pageSize)
+  def apply(section: String, permalink: Option[Permalink])(implicit now: OffsetDateTime): (Iterable[Article], Permalink) = {
+    val (allArticles, latestTimestamp) = articles(section, permalink.map(_.timestamp) getOrElse now)
+    val pageNum = permalink.map(_.page) getOrElse 1
+
+    val (articlePage, hasMore) = paged(allArticles, pageNum, Permalink.pageSize)
     val nextPage = Some(pageNum + 1).filter(_ => hasMore)
-    (page, latestTimestamp, nextPage)
+
+    val resolvedPermalink = Permalink(latestTimestamp, pageNum, nextPage, permalink.map(_.timestamp))
+
+    (articlePage, resolvedPermalink)
   }
 
   def paged(all: Iterable[Article], page: Int, pageSize: Int): (Iterable[Article], Boolean) = {
@@ -149,9 +154,6 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
       case None => download(source)
     }
 
-  def download(source: FeedSource): Future[Option[CachedFeed]] =
-  download(source, latest(source))
-
   def load(source: FeedSource): Future[Option[CachedFeed]] =
     feedStore.load(source.url).flatMap { downloads =>
       Future.sequence(downloads.map(parse(source, _))).map {
@@ -160,6 +162,9 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
         }
       }
     }
+
+  def download(source: FeedSource): Future[Option[CachedFeed]] =
+    download(source, latest(source))
 
   def download(source: FeedSource, previous: Option[CachedFeed]): Future[Option[CachedFeed]] = {
     val timestamp = OffsetDateTime.now(ZoneOffset.UTC)

@@ -1,70 +1,129 @@
 @import java.time.OffsetDateTime
 @import model.Article
+@import model.Permalink
 @import play.api.Configuration
 
-@(section: String, articles: Iterable[Article], timestamp: OffsetDateTime, page: Int, nextPage: Option[Int])(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
+@(section: String, articles: Iterable[Article], permalink: Permalink)(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
 
-@template(section, feedSections.getString(section).get) {
-    <h1><a href="@routes.HomeController.articles(section, timestamp.toString, page)">@feedSections.getString(section).get</a></h1>
+@defining(permalink.requested.fold("Latest ")(_ => "") +
+          feedSections.getString(section).get +
+          permalink.requested.fold("")(_ => " as of " + permalink.viewTimestamp + Some(permalink.page).filter(_ > 1).fold("")(p => " · Page " + p))) { title =>
+    @template(section, title) {
+        <h1><span class="urban">@feedSections.getString(section).get</span></h1>
 
-    @articlePage(section, articles, timestamp, page, nextPage)
-} {
-    <script type="text/javascript">
-        function loadMore() {
-            var loadMore = $('.load-more')
+        <p class="text-muted">
+            <small>
+                @permalink.requested.fold {
+                    Latest @feedSections.getString(section).get
 
-            var nextPageUrl = loadMore.find("a").attr("href")
-            if (!nextPageUrl)
-                return
+                    <span class="text-muted">·</span>
+                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                    <a href='@routes.HomeController.articles(section, "", 1, None)'>Reload</a>
 
-            loadMore.find("h3").html("<i class='fa fa-refresh fa-spin fa-2x fa-fw'></i><span class='sr-only'>Loading...</span>")
-            @if(play.Play.isDev()) {
-                console.log("Loading: " + nextPageUrl)
+                    <span class="text-muted">·</span>
+                    <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
+                    <a href="@routes.HomeController.articles(section, permalink.urlTimestamp, permalink.page, None)">Permalink &raquo;</a>
+                } { _ =>
+                    <span class="permalink-timestamp" date="@permalink.timestamp">@permalink.viewTimestamp</span>
+
+                    <span class="text-muted">·</span>
+                    <a href='@routes.HomeController.articles(section, "", 1, None)'>Back to Latest &laquo;</a>
+
+                    <span class="text-muted">·</span>
+                    @permalink.prevPage.fold {
+                        &laquo;
+                    } { prevPage =>
+                        <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, prevPage, None)'>&laquo;</a>
+                    }
+
+                    Page <span class="permalink-page">@permalink.page</span>
+
+                    @permalink.nextPage.fold {
+                        &raquo;
+                    } { nextPage =>
+                        <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, nextPage, None)'>&raquo;</a>
+                    }
+
+                    <span class="text-muted">·</span>
+                    @permalink.prevPage.fold {
+                        First Page &laquo;
+                    } { _ =>
+                        <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, 1, None)'>First Page &laquo;</a>
+                    }
+                }
+            </small>
+        </p>
+
+        @articlePage(section, articles, permalink)
+    } {
+        <script type="text/javascript">
+            function loadMore() {
+                var loadMore = $('.load-more')
+
+                var nextPageUrl = loadMore.find("a").attr("href")
+                if (!nextPageUrl)
+                    return
+
+                loadMore.find("h3").html("<i class='fa fa-refresh fa-spin fa-2x fa-fw'></i><span class='sr-only'>Loading...</span>")
+                @if(play.Play.isDev()) {
+                    console.log("Loading: " + nextPageUrl)
+                }
+
+                var grid = $('.grid')
+
+                $.ajax({ url: nextPageUrl + ((nextPageUrl.indexOf('?') == -1) ? '?' : '&') + "ajax=true" }).done(function(data) {
+                    var newContent = $("<div>").append(data)
+
+                    var newItems = newContent.find("> .grid > .grid-item")
+                    grid.append(newItems).masonry('appended', newItems)
+                    grid.imagesLoaded().progress( function() {
+                      grid.masonry('layout');
+                    });
+
+                    loadMore.replaceWith(newContent.find("> .load-more"))
+                });
             }
 
-            var grid = $('.grid')
+            $(document).ready(function() {
+                var win = $(window);
+                var doc = $(document);
 
-            $.ajax({ url: nextPageUrl + ((nextPageUrl.indexOf('?') == -1) ? '?' : '&') + "ajax=true" }).done(function(data) {
-                var newContent = $("<div>").append(data)
-
-                var newItems = newContent.find("> .grid > .grid-item")
-                grid.append(newItems).masonry('appended', newItems)
-                grid.imagesLoaded().progress( function() {
-                  grid.masonry('layout');
+                // Each time the user scrolls
+                win.scroll(function() {
+                    // End of the document reached?
+                    if (doc.height() - (win.scrollTop() + win.height()) < 1000) {
+                        loadMore();
+                    }
                 });
-
-                loadMore.replaceWith(newContent.find("> .load-more"))
             });
-        }
 
-        $(document).ready(function() {
-            var win = $(window);
-            var doc = $(document);
-
-            // Each time the user scrolls
-            win.scroll(function() {
-                // End of the document reached?
-                if (doc.height() - (win.scrollTop() + win.height()) < 1000) {
-                    loadMore();
-                }
+            $(document).ready(function() {
+                setInterval(function() {
+                    @if(play.Play.isDev()) {
+                        console.log("Refreshing dates...")
+                    }
+                    $(".content .article .since-timestamp").each(function(index) {
+                        var dts = $(this).attr("date")
+                        var mom = moment(new Date(Date.parse(dts)))
+                        $(this).html(mom.fromNow())
+                    });
+                }, 60000)
             });
-        });
 
-        $(document).ready(function() {
-            setInterval(function() {
-                @if(play.Play.isDev()) {
-                    console.log("Refreshing dates...")
-                }
-                $(".content .article .since").each(function(index) {
-                    $(this).html(moment(new Date(Date.parse($(this).attr("date")))).fromNow())
+            $(document).ready(function() {
+                $(".content .permalink-timestamp").each(function(index) {
+                    var dts = $(this).attr("date")
+                    var mom = moment(new Date(Date.parse(dts)))
+                    mom.utcOffset(moment().utcOffset())
+                    $(this).html(mom.format("ddd, D MMM YYYY, HH:mm:ss"))
                 });
-            }, 60000)
-        });
+            });
 
-        // layout Masonry after each image loads
-        var $grid = $('.grid');
-        $grid.imagesLoaded().progress( function() {
-          $grid.masonry('layout');
-        });
-    </script>
+            // layout Masonry after each image loads
+            var $grid = $('.grid');
+            $grid.imagesLoaded().progress( function() {
+              $grid.masonry('layout');
+            });
+        </script>
+    }
 }

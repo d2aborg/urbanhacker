@@ -1,7 +1,8 @@
 @import model.Article
+@import model.Permalink
 @import java.time.OffsetDateTime
 
-@(section: String, articles: Iterable[Article], timestamp: OffsetDateTime, page: Int, nextPage: Option[Int])(implicit now: OffsetDateTime)
+@(section: String, articles: Iterable[Article], permalink: Permalink)(implicit now: OffsetDateTime)
 
 <div class="row grid" data-masonry='{ "itemSelector": ".grid-item" }'>
     @for(article <- articles) {
@@ -28,15 +29,14 @@
                         <span class="text-muted">·</span>
                     }
 
-                    <a href="@article.link" class="source text-nowrap" target="_blank">
-                        <span class="since" date="@article.date">@article.since</span> &raquo;
-                    </a>
+                    <span class="text-nowrap">
+                        <small class="text-muted"><span class="glyphicon glyphicon-link" aria-hidden="true"></span></small>
+                        <a href="@article.link" class="source" target="_blank">
+                            <span class="since-timestamp" date="@article.date">@article.since</span> &raquo;
+                        </a>
+                    </span>
 
-                    <ul class="follow-buttons">
-                        <li><a class="follow-feed" href="@article.source.url" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
-                    </ul>
-
-                    <ul class="share-buttons">
+                    <ul class="share-buttons pull-left">
                         <li><a class="share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)" target="_blank" title="Share on Facebook" onclick="return share(this)"><i class="fa fa-lg fa-facebook-square"></i></a></li>
                         <li><a class="share-twitter" href="https://twitter.com/intent/tweet?source=@helper.urlEncode(article.link)&text=@helper.urlEncode(article.title):%20@helper.urlEncode(article.link)" target="_blank" title="Tweet" onclick="return share(this)"><i class="fa fa-lg fa-twitter-square"></i></a></li>
                         <li><a class="share-googleplus" href="https://plus.google.com/share?url=@helper.urlEncode(article.link)" target="_blank" title="Share on Google+" onclick="return share(this)"><i class="fa fa-lg fa-google-plus-square"></i></a></li>
@@ -47,17 +47,21 @@
                         <li><a class="share-email" href="mailto:?subject=@article.title&body=@article.title: @helper.urlEncode(article.link)" title="Email"><i class="fa fa-lg fa-envelope-square"></i></a></li>
                         &nbsp;
                     </ul>
+
+                    <ul class="follow-buttons pull-right">
+                        <li><a class="follow-feed" href="@article.source.url" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
+                    </ul>
                 </p>
             </div>
         </div>
     }
 </div>
 
-@nextPage.map { nextPage =>
+@permalink.nextPage.map { nextPage =>
     <div class="row load-more">
         <div class="col-md-12">
             <h3>
-                <a href="@routes.HomeController.articles(section, timestamp.toString, nextPage)" onclick="loadMore(); return false">Load More &hellip;</a>
+                <a href="@routes.HomeController.articles(section, permalink.urlTimestamp, nextPage, None)" onclick="loadMore(); return false">Load More &hellip;</a>
             </h3>
         </div>
     </div>
