@@ -7,7 +7,7 @@
 <div class="row grid" data-masonry='{ "itemSelector": ".grid-item" }'>
     @for(article <- articles) {
         <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4 grid-item">
-            <div class='article'>
+            <article class='article'>
                 <h4><a href="@article.link" class="title" target="_blank">@article.title</a></h4>
 
                 @article.image.map { img =>
@@ -20,49 +20,57 @@
                     <p>@article.croppedText <a href="@article.link" class="source" target="_blank">&raquo;</a></p>
                 }
 
-                <p>
-                    @article.source.siteUrl.fold(Html(article.source.title.getOrElse(""))) { siteUrl =>
-                        <a href="@siteUrl" class="source" target="_blank">
-                            @article.source.favicon.map { favicon => <img src="@favicon" class="favicon" onerror="this.style.display='none'"/> }
-                            @article.source.title.getOrElse("")
-                        </a>
-                        <span class="text-muted">·</span>
-                    }
+                <nav>
+                    <p>
+                        @article.source.siteUrl.fold(Html(article.source.title.getOrElse(""))) { siteUrl =>
+                            <a href="@siteUrl" class="source" target="_blank">
+                                @article.source.favicon.map { favicon => <img src="@favicon" class="favicon" onerror="this.style.display='none'"/> }
+                                @article.source.title.getOrElse("")
+                            </a>
+                            <span class="text-muted">·</span>
+                        }
 
-                    <span class="text-nowrap">
-                        <small class="text-muted"><span class="glyphicon glyphicon-link" aria-hidden="true"></span></small>
-                        <a href="@article.link" class="source" target="_blank">
-                            <span class="since-timestamp" date="@article.date">@article.since</span> &raquo;
-                        </a>
-                    </span>
+                        <span class="text-nowrap">
+                            <small class="text-muted"><span class="glyphicon glyphicon-link" aria-hidden="true"></span></small>
+                            <a href="@article.link" class="source" target="_blank">
+                                <time class="since-timestamp" datetime="@article.date">@article.since</time> &raquo;
+                            </a>
+                        </span>
+                    </p>
+                </nav>
 
-                    <ul class="share-buttons pull-left">
-                        <li><a class="share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)" target="_blank" title="Share on Facebook" onclick="return share(this)"><i class="fa fa-lg fa-facebook-square"></i></a></li>
-                        <li><a class="share-twitter" href="https://twitter.com/intent/tweet?source=@helper.urlEncode(article.link)&text=@helper.urlEncode(article.title):%20@helper.urlEncode(article.link)" target="_blank" title="Tweet" onclick="return share(this)"><i class="fa fa-lg fa-twitter-square"></i></a></li>
-                        <li><a class="share-googleplus" href="https://plus.google.com/share?url=@helper.urlEncode(article.link)" target="_blank" title="Share on Google+" onclick="return share(this)"><i class="fa fa-lg fa-google-plus-square"></i></a></li>
-                        <li><a class="share-tumblr" href="http://www.tumblr.com/share?v=3&u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)&s=" target="_blank" title="Post to Tumblr" onclick="return share(this)"><i class="fa fa-lg fa-tumblr-square"></i></a></li>
-                        <li><a class="share-pinterest" href="http://pinterest.com/pin/create/button/?url=@helper.urlEncode(article.link)&description=@helper.urlEncode(article.title)" target="_blank" title="Pin it" onclick="return share(this)"><i class="fa fa-lg fa-pinterest-square"></i></a></li>
-                        <li><a class="share-reddit" href="http://www.reddit.com/submit?url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)" target="_blank" title="Submit to Reddit" onclick="return share(this)"><i class="fa fa-lg fa-reddit-square"></i></a></li>
-                        <li><a class="share-linkedin" href="http://www.linkedin.com/shareArticle?mini=true&url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)&summary=@helper.urlEncode(article.title)&source=@helper.urlEncode(article.link)" target="_blank" title="Share on LinkedIn" onclick="return share(this)"><i class="fa fa-lg fa-linkedin-square"></i></a></li>
-                        <li><a class="share-email" href="mailto:?subject=@article.title&body=@article.title: @helper.urlEncode(article.link)" title="Email"><i class="fa fa-lg fa-envelope-square"></i></a></li>
-                        &nbsp;
-                    </ul>
+                <footer>
+                    <p>
+                        <ul class="share-buttons pull-left">
+                            <li><a class="share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)" target="_blank" title="Share on Facebook" onclick="return share(this)"><i class="fa fa-lg fa-facebook-square"></i></a></li>
+                            <li><a class="share-twitter" href="https://twitter.com/intent/tweet?source=@helper.urlEncode(article.link)&text=@helper.urlEncode(article.title):%20@helper.urlEncode(article.link)" target="_blank" title="Tweet" onclick="return share(this)"><i class="fa fa-lg fa-twitter-square"></i></a></li>
+                            <li><a class="share-googleplus" href="https://plus.google.com/share?url=@helper.urlEncode(article.link)" target="_blank" title="Share on Google+" onclick="return share(this)"><i class="fa fa-lg fa-google-plus-square"></i></a></li>
+                            <li><a class="share-tumblr" href="http://www.tumblr.com/share?v=3&u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)&s=" target="_blank" title="Post to Tumblr" onclick="return share(this)"><i class="fa fa-lg fa-tumblr-square"></i></a></li>
+                            <li><a class="share-pinterest" href="http://pinterest.com/pin/create/button/?url=@helper.urlEncode(article.link)&description=@helper.urlEncode(article.title)" target="_blank" title="Pin it" onclick="return share(this)"><i class="fa fa-lg fa-pinterest-square"></i></a></li>
+                            <li><a class="share-reddit" href="http://www.reddit.com/submit?url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)" target="_blank" title="Submit to Reddit" onclick="return share(this)"><i class="fa fa-lg fa-reddit-square"></i></a></li>
+                            <li><a class="share-linkedin" href="http://www.linkedin.com/shareArticle?mini=true&url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)&summary=@helper.urlEncode(article.title)&source=@helper.urlEncode(article.link)" target="_blank" title="Share on LinkedIn" onclick="return share(this)"><i class="fa fa-lg fa-linkedin-square"></i></a></li>
+                            <li><a class="share-email" href="mailto:?subject=@article.title&body=@article.title: @helper.urlEncode(article.link)" title="Email"><i class="fa fa-lg fa-envelope-square"></i></a></li>
+                            &nbsp;
+                        </ul>
 
-                    <ul class="follow-buttons pull-right">
-                        <li><a class="follow-feed" href="@article.source.url" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
-                    </ul>
-                </p>
-            </div>
+                        <ul class="follow-buttons pull-right">
+                            <li><a class="follow-feed" href="@article.source.url" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
+                        </ul>
+                    </p>
+                </footer>
+            </article>
         </div>
     }
 </div>
 
 @permalink.nextPage.map { nextPage =>
-    <div class="row load-more">
+    <div class="load-more row">
         <div class="col-md-12">
-            <h3>
-                <a href="@routes.HomeController.articles(section, permalink.urlTimestamp, nextPage, None)" onclick="loadMore(); return false">Load More &hellip;</a>
-            </h3>
+            <footer>
+                <h3>
+                    <a href="@routes.HomeController.articles(section, permalink.urlTimestamp, nextPage, None)" onclick="loadMore(); return false">Load More &hellip;</a>
+                </h3>
+            </footer>
         </div>
     </div>
 }

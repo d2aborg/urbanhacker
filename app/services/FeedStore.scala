@@ -27,7 +27,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider)(implicit exe
 
   def saveDownloads(download: Download): Future[Download] = {
     val saved = db.run((downloads returning downloads.map(_.id) into ((download, id) => download.copy(id = id))) += download)
-    Logger.info("Saved: " + download.copy(content = download.content.substring(0, 100)))
+    Logger.info("Saved: " + download.copy(content = crop(download.content, 100)))
     saved
   }
 

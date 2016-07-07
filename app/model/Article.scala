@@ -11,7 +11,7 @@ import com.optimaize.langdetect.ngram.NgramExtractors
 import com.optimaize.langdetect.profiles.LanguageProfileReader
 import com.optimaize.langdetect.text.{CommonTextObjectFactories, TextObjectFactory}
 import com.optimaize.langdetect.{LanguageDetector, LanguageDetectorBuilder}
-import model.Utils.{nonEmpty, parseInternetDateTime, unescape, unescapeOption}
+import model.Utils._
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
 
@@ -54,16 +54,7 @@ case class Article(source: FeedSource, title: String, link: String, commentsLink
     else "not yet"
   }
 
-  def croppedText: String = {
-    def crop(text: String, maxLength: Int): String = {
-      if (text.length > maxLength)
-        text.substring(0, maxLength) + "..."
-      else
-        text
-    }
-
-    crop(text, maxSummaryLength)
-  }
+  def croppedText: String = crop(text, maxSummaryLength)
 }
 
 object Article {

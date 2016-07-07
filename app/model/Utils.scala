@@ -17,6 +17,13 @@ import scala.xml.NodeSeq
   * Helper utilities for feeds.
   */
 object Utils {
+  def crop(text: String, maxLength: Int): String = {
+    if (text.length > maxLength)
+      text.substring(0, maxLength) + "..."
+    else
+      text
+  }
+
   def parseOffsetDateTime(dts: String, dtf: DateTimeFormatter): Option[OffsetDateTime] = {
     nonEmpty(dts).flatMap { dts =>
       Try(ZonedDateTime parse(dts, dtf)) match {

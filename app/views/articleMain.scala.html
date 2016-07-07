@@ -10,7 +10,9 @@
             " · " + permalink.viewTimestamp + Some(permalink.page).filter(_ > 1).fold("") { " · Page " + _ }
           }) { title =>
     @template(section, title) {
-        <h1><span class="urban">@feedSections.getString(section).get</span></h1>
+        <header>
+            <h1><span class="urban">@feedSections.getString(section).get</span></h1>
+        </header>
 
         <p class="text-muted">
             <small>
@@ -35,7 +37,7 @@
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
                         <a href='@routes.HomeController.articles(section, permalink.urlTimestamp, 1, None)'>
-                            <span class="permalink-timestamp" date="@permalink.timestamp">@permalink.viewTimestamp</span>
+                            <span class="permalink-timestamp" datetime="@permalink.timestamp">@permalink.viewTimestamp</span>
                         </a>
                     </span>
 
@@ -106,7 +108,7 @@
                         console.log("Refreshing dates...")
                     }
                     $(".content .article .since-timestamp").each(function(index) {
-                        var dts = $(this).attr("date")
+                        var dts = $(this).attr("datetime")
                         var mom = moment(new Date(Date.parse(dts)))
                         $(this).html(mom.fromNow())
                     });
@@ -115,7 +117,7 @@
 
             $(document).ready(function() {
                 $(".content .permalink-timestamp").each(function(index) {
-                    var dts = $(this).attr("date")
+                    var dts = $(this).attr("datetime")
                     var mom = moment(new Date(Date.parse(dts)))
                     mom.utcOffset(moment().utcOffset())
                     $(this).html(mom.format("ddd, D MMM YYYY, HH:mm:ss"))
