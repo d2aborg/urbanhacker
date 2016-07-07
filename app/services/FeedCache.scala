@@ -11,10 +11,9 @@ import javax.net.ssl._
 
 import akka.actor.ActorSystem
 import com.google.inject.{Inject, Singleton}
-import model.Utils._
 import model._
+import play.api.Logger
 import play.api.inject.ApplicationLifecycle
-import play.api.{Configuration, Logger}
 
 import scala.collection.{SortedMap, SortedSet, mutable}
 import scala.concurrent.duration._
@@ -23,7 +22,7 @@ import scala.io.Source
 import scala.xml.XML
 
 @Singleton
-class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, actorSystem: ActorSystem, lifecycle: ApplicationLifecycle)(implicit exec: ExecutionContext) {
+class FeedCache @Inject()(feedStore: FeedStore, actorSystem: ActorSystem, lifecycle: ApplicationLifecycle)(implicit exec: ExecutionContext) {
   val reloadTask = actorSystem.scheduler.schedule(5 minutes, 30 minutes) {
     reload()
   }
@@ -43,8 +42,8 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
   }), new SecureRandom())
   SSLContext.setDefault(ctx)
 
-  val sections: Set[String] = configuration.getConfig("sections").getOrElse(Configuration.empty).subKeys
   val cache: mutable.Map[FeedSource, CachedFeed] = mutable.Map.empty
+
   prime()
 
   case class CachedFeed(source: FeedSource, feed: Feed, previous: Option[CachedFeed]) {
@@ -87,7 +86,7 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
 
   def articles(section: String, timestamp: OffsetDateTime): (Iterable[Article], OffsetDateTime) = {
     val historicCachedFeeds = cache synchronized {
-      cache.filterKeys(_.section == section).values
+      cache.filterKeys(_.section.startsWith(section)).values
     }.flatMap {
       _.historic(timestamp)
     }
@@ -95,12 +94,13 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
     val historicTimestamp = historicCachedFeeds.map(_.feed.metaData.timestamp)
       .reduceOption(implicitly[Ordering[OffsetDateTime]].max) getOrElse timestamp
 
-    val articlesByFrecency = SortedMap[Double, Article]() ++ historicCachedFeeds.groupBy(_.source.group).mapValues {
-      case cachedFeeds => cachedFeeds.flatMap(_.articles).groupBy(_.link).values.map(_.max).to[SortedSet]
-    }.flatMap {
-      case (_, articles) if articles nonEmpty => byFrecency(articles, historicTimestamp)
-      case _ => Nil
-    }
+    val articlesByFrecency = SortedMap[Double, Article]() ++
+      historicCachedFeeds.groupBy(cf => cf.source.group.getOrElse(cf.source.url)).mapValues {
+        case cachedFeeds => cachedFeeds.flatMap(_.articles).groupBy(_.link).values.map(_.max).to[SortedSet]
+      }.flatMap {
+        case (_, articles) if articles nonEmpty => byFrecency(articles, historicTimestamp)
+        case _ => Nil
+      }
 
     (articlesByFrecency.values, historicTimestamp)
   }
@@ -133,9 +133,10 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
   }
 
   def update(loadEventualMaybeFeedsBySource: FeedSource => Future[Option[CachedFeed]]): Future[(Int, Int)] = {
-    val eventualMaybeCachedFeeds = loadSources map loadEventualMaybeFeedsBySource
+    val eventualEventualMaybeCachedFeeds: Future[Seq[Future[Option[CachedFeed]]]] = feedStore.loadSources.map(_.map(loadEventualMaybeFeedsBySource))
 
     for {
+      eventualMaybeCachedFeeds <- eventualEventualMaybeCachedFeeds
       eventualMaybeCachedFeed <- eventualMaybeCachedFeeds
       maybeCachedFeed <- eventualMaybeCachedFeed
       cachedFeed <- maybeCachedFeed
@@ -144,8 +145,10 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
       Logger.info("---> Cached: " + cachedFeed.source.url)
     }
 
-    for (maybeCachedFeeds <- Future sequence eventualMaybeCachedFeeds)
-      yield (maybeCachedFeeds.flatten.size, maybeCachedFeeds.size)
+    for {
+      eventualMaybeCachedFeeds <- eventualEventualMaybeCachedFeeds
+      maybeCachedFeeds <- Future sequence eventualMaybeCachedFeeds
+    } yield (maybeCachedFeeds.flatten.size, maybeCachedFeeds.size)
   }
 
   def loadOrDownload(source: FeedSource): Future[Option[CachedFeed]] =
@@ -155,13 +158,15 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
     }
 
   def load(source: FeedSource): Future[Option[CachedFeed]] =
-    feedStore.load(source.url).flatMap { downloads =>
-      Future.sequence(downloads.map(parse(source, _))).map {
-        Logger.info("Loaded: " + source.url)
-        _.flatten.foldLeft(None: Option[CachedFeed]) { (previous, feed) =>
-          Some(CachedFeed(source, feed, previous))
+    feedStore.loadDownloads(source.url).flatMap {
+      downloads =>
+        Future.sequence(downloads.map(parse(source, _))).map {
+          Logger.info("Loaded: " + source.url)
+          _.flatten.foldLeft(None: Option[CachedFeed]) {
+            (previous, feed) =>
+              Some(CachedFeed(source, feed, previous))
+          }
         }
-      }
     }
 
   def download(source: FeedSource): Future[Option[CachedFeed]] =
@@ -181,14 +186,16 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
       }
       connection setRequestProperty("User-Agent", "UrbanHacker/0.1")
 
-      previous map (_.feed.metaData) flatMap (_.eTag) foreach { eTag =>
-        connection setRequestProperty("If-None-Match", eTag)
+      previous map (_.feed.metaData) flatMap (_.eTag) foreach {
+        eTag =>
+          connection setRequestProperty("If-None-Match", eTag)
       }
 
       previous map (_.feed.metaData) flatMap (_.lastModified) orElse {
         previous map (_.feed.metaData.timestamp.format(RFC_1123_DATE_TIME))
-      } foreach { lastModified =>
-        connection setRequestProperty("If-Modified-Since", lastModified)
+      } foreach {
+        lastModified =>
+          connection setRequestProperty("If-Modified-Since", lastModified)
       }
 
       val eventualMaybeContent = Future {
@@ -210,10 +217,10 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
             Option(connection getHeaderField "ETag"),
             md5(content), timestamp)
 
-          val download = TextDownload(0, metaData, content)
+          val download = Download(0, metaData, content)
 
           parse(source, download).flatMap {
-            case Some(feed) => save(source, CachedFeed(source, feed, previous), download)
+            case Some(feed) => save(source, CachedFeed(source, feed, previous), download).map(_.map(_._2))
             case _ => Future.successful(None)
           }
         case _ => Future.successful(None)
@@ -228,34 +235,19 @@ class FeedCache @Inject()(feedStore: FeedStore, configuration: Configuration, ac
   def md5(data: String): String =
     MessageDigest.getInstance("MD5").digest(data.getBytes("UTF-8")).map("%02x".format(_)).mkString
 
-  def parse(source: FeedSource, textDownload: TextDownload): Future[Option[Feed]] = Future {
+  def parse(source: FeedSource, textDownload: Download): Future[Option[Feed]] = Future {
     val xml = XML.load(new StringReader(textDownload.content))
     val xmlDownload = XmlDownload(textDownload.metaData, xml)
     Feed.parse(source, xmlDownload)
   }
 
-  def save(source: FeedSource, cachedFeed: CachedFeed, download: TextDownload): Future[Option[CachedFeed]] = {
+  def save(source: FeedSource, cachedFeed: CachedFeed, download: Download): Future[Option[(Download, CachedFeed)]] = {
     if (cachedFeed.previous.map(_.feed.metaData.checksum).contains(cachedFeed.feed.metaData.checksum))
       return Future.successful(None)
 
     if (cachedFeed.previous.map(_.feed.articles).contains(cachedFeed.feed.articles))
       return Future.successful(None)
 
-    feedStore.save(download).map(if (_) Some(cachedFeed) else None)
-  }
-
-  def loadSources: Set[FeedSource] =
-    for {
-      section <- sections
-      line <- Source.fromFile(s"feeds.$section.txt").getLines.map(_.trim) if !line.startsWith("#") && !line.isEmpty
-      source <- parseSource(section, line)
-    } yield source
-
-
-  def parseSource(section: String, line: String): Option[FeedSource] = line.split("\\|") match {
-    case Array(feedUrl) => parseURI(feedUrl).map(FeedSource(section, _, feedUrl))
-    case Array(feedUrl, group) => parseURI(feedUrl).map(FeedSource(section, _, nonEmpty(group, feedUrl)))
-    case Array(feedUrl, group, siteUrl) => parseURI(feedUrl).map(FeedSource(section, _, nonEmpty(group, feedUrl), parseURI(siteUrl)))
-    case Array(feedUrl, group, siteUrl, title) => parseURI(feedUrl).map(FeedSource(section, _, nonEmpty(group, feedUrl), parseURI(siteUrl), nonEmpty(title)))
+    feedStore.saveDownloads(download).map(dl => Some((dl, cachedFeed)))
   }
 }
