@@ -5,14 +5,20 @@
 <!DOCTYPE html>
 <html lang="en" prefix="og: http://ogp.me/ns#">
 <head>
+    <!-- Bootstrap -->
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Bootstrap: The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
 
+    <!-- App -->
     <title>@if(request.path != "/") {@title · }Urban Hacker</title>
     <link rel="shortcut icon" type="image/png" href='@routes.Assets.versioned("images/noun_13217_cc_t3.png")'>
+    <meta name="description" content="Simple hacker news and coding blog web site, for fun.">
+    <meta name="keywords" content="Tech,Technology,News,Blogs">
+    <meta name="author" content="Daniel Skogquist Åborg">
 
+    <!-- Open Graph -->
     <meta property="og:title" content='@if(request.path != "/") {@title · }Urban Hacker' />
     <meta property="og:type" content="website" />
     <meta property="og:image" content='@routes.Assets.versioned("images/noun_13217_cc_t3.png")' />
@@ -28,13 +34,6 @@
 
     <!-- App CSS -->
     <link rel="stylesheet" media="screen" href='@routes.Assets.versioned("stylesheets/main.css")'>
-
-    <!-- Necessary Preloaded JS -->
-    <script type="text/javascript">
-        function imageLoaded(img){
-            img.parentNode.parentNode.className += ' loaded';
-        };
-    </script>
 
     <!-- Google Analytics -->
     <script>

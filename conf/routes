@@ -11,4 +11,5 @@ GET     /$section<blogs>/t/$timestamp<\d{8}T\d{6}.\d{3}Z>/p/$page<\d+>      cont
 GET     /about                                                              controllers.HomeController.about
 
 # Map static resources from the /public folder to the /assets URL path
-GET     /assets/*file                           controllers.Assets.versioned(path="/public", file: Asset)
+GET     /sitemap.xml                            controllers.Assets.at(path = "/public", file = "sitemap.xml")
+GET     /assets/*file                           controllers.Assets.versioned(path = "/public", file: Asset)

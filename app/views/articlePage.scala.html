@@ -12,7 +12,7 @@
 
                 @article.image.map { img =>
                     <div class="image">
-                        <a href="@article.link" target="_blank"><img src="@img" onload="imageLoaded(this)"/></a>
+                        <a href="@article.link" target="_blank"><img src="@img" alt="@article.title" onload="this.parentNode.parentNode.className+=' loaded'"/></a>
                     </div>
                 }
 
