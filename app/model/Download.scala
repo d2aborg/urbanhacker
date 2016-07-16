@@ -1,22 +1,27 @@
 package model
 
-import java.net.URI
-import java.sql.Timestamp
-import java.time.{OffsetDateTime, ZoneOffset}
+import java.time.ZonedDateTime
 
-import slick.driver.PostgresDriver.api._
+import services.MyPostgresDriver.api._
 import slick.lifted.Tag
+import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
 import scala.xml.Elem
 
-case class MetaData(url: URI, lastModified: Option[String], eTag: Option[String], checksum: String, timestamp: OffsetDateTime)
-case class Download(id: Long, metaData: MetaData, content: String)
+case class MetaData(lastModified: Option[String], eTag: Option[String], checksum: String, timestamp: ZonedDateTime)
+
+case class Download(id: Option[Long], sourceId: Long, metaData: MetaData, content: String) {
+  def mkString: String = copy(content = Utils.crop(content, 100).replaceAll("\\s+", " ")).toString
+}
+
 case class XmlDownload(metaData: MetaData, xml: Elem)
 
 class DownloadsTable(tag: Tag) extends Table[Download](tag, "downloads") {
-  def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
+  def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
 
-  def url = column[String]("url")
+  def sourceId = column[Long]("source_id")
+
+  def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
 
   def lastModified = column[Option[String]]("last_modified")
 
@@ -24,21 +29,18 @@ class DownloadsTable(tag: Tag) extends Table[Download](tag, "downloads") {
 
   def checksum = column[String]("checksum")
 
-  def timestamp = column[Timestamp]("timestamp")
+  def timestamp = column[ZonedDateTime]("timestamp")
 
   def content = column[String]("content")
 
   override def * =
-    (id, (url, lastModified, eTag, checksum, timestamp), content).shaped <>( {
-      case (id, (url, lastModified, eTag, checksum, timestamp), content) => Download(id, MetaData(new URI(url), lastModified, eTag, checksum, timestamp.toInstant.atOffset(ZoneOffset.UTC)), content)
-    }, { download: Download =>
-      Some((download.id, (
-        download.metaData.url.toString, download.metaData.lastModified, download.metaData.eTag, download.metaData.checksum,
-        new Timestamp(download.metaData.timestamp.toInstant.toEpochMilli)),
-        download.content))
+    (id, sourceId, (lastModified, eTag, checksum, timestamp), content).shaped <>( {
+      case (id, sourceId, (lastModified, eTag, checksum, timestamp), content) =>
+        Download(id, sourceId, MetaData(lastModified, eTag, checksum, timestamp), content)
+    }, { d: Download =>
+      Some((d.id, d.sourceId, (d.metaData.lastModified, d.metaData.eTag, d.metaData.checksum, d.metaData.timestamp), d.content))
     })
 }
 
 object downloads extends TableQuery(new DownloadsTable(_)) {
-  val byUrl = this.findBy(_.url)
 }

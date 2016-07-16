@@ -1,10 +1,10 @@
 package controllers
 
-import java.time.{OffsetDateTime, ZoneOffset}
+import java.time.{ZoneOffset, ZonedDateTime}
 import javax.inject._
 
-import model.Permalink
 import model.Permalink.parseUrlTimestamp
+import model.{CachedArticle, Permalink}
 import play.api.Configuration
 import play.api.mvc._
 import services.FeedCache
@@ -24,20 +24,24 @@ class HomeController @Inject()(feedCache: FeedCache, configuration: Configuratio
     Ok(views.html.about())
   }
 
-  def articles(section: String, timestamp: String = "", page: Int = 1, ajax: Option[String]) = Action { implicit request =>
-    implicit val now = OffsetDateTime.now(ZoneOffset.UTC)
+  def articles(section: String, timestamp: String = "", page: Int = 1, ajax: Option[String]) = Action.async { implicit request =>
+    implicit val now = ZonedDateTime.now(ZoneOffset.UTC)
 
     val requestedPermalink = parseUrlTimestamp(timestamp).map(t => Permalink(t, page))
-    val (articles, resolvedPermalink) = feedCache(section, requestedPermalink)
 
-    ajax.filter(_ == "true").fold {
-      resolvedPermalink.requested.filterNot(_ == resolvedPermalink.timestamp).fold {
-        Ok(views.html.articleMain(section, articles, resolvedPermalink))
+    feedCache(section, requestedPermalink).map { (result: Option[(Seq[CachedArticle], Permalink)]) =>
+      val (articles, resolvedPermalink) = result.fold((Seq.empty[CachedArticle], requestedPermalink.getOrElse(Permalink(parseUrlTimestamp(timestamp).getOrElse(now), 1))))(r => r)
+
+      ajax.filter(_ == "true").fold {
+        resolvedPermalink.requested.filterNot(_ == resolvedPermalink.timestamp.withZoneSameInstant(ZoneOffset.UTC)).fold {
+          Ok(views.html.articleMain(section, articles, resolvedPermalink))
+        } { _ =>
+          Redirect(routes.HomeController.articles(section, resolvedPermalink.urlTimestamp, resolvedPermalink.page, ajax))
+        }
       } { _ =>
-        Redirect(routes.HomeController.articles(section, resolvedPermalink.urlTimestamp, resolvedPermalink.page, ajax))
+        Ok(views.html.articlePage(section, articles, resolvedPermalink))
       }
-    } { _ =>
-      Ok(views.html.articlePage(section, articles, resolvedPermalink))
     }
   }
+
 }

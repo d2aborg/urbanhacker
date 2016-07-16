@@ -14,30 +14,25 @@ import com.optimaize.langdetect.{LanguageDetector, LanguageDetectorBuilder}
 import model.Utils._
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
+import services.MyPostgresDriver.api._
+import slick.lifted.{TableQuery, Tag}
+import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
 import scala.math.max
 import scala.xml._
 import scala.xml.parsing.NoBindingFactoryAdapter
 
-case class Article(source: FeedSource, title: String, link: String, commentsLink: Option[String],
-                   date: OffsetDateTime, image: Option[URI], text: String) extends Ordered[Article] {
-  val maxSummaryLength = 250
+case class Article(id: Option[Long], sourceId: Long, feedId: Option[Long], title: String, link: URI, commentsLink: Option[URI],
+                   pubDate: ZonedDateTime, imageSource: Option[URI], text: String) extends Ordered[Article] {
+  override def compare(that: Article): Int = -pubDate.compareTo(that.pubDate)
 
-  override def compare(that: Article): Int = -date.compareTo(that.date)
-
-  def frecency(frequency: Double, timestamp: OffsetDateTime): Double =
-    Math.pow(age(timestamp), 4) * frequency
-
-  def age(timestamp: OffsetDateTime): Long =
-    ChronoUnit.SECONDS.between(date, timestamp)
-
-  def since(implicit now: OffsetDateTime): String = {
-    val years = ChronoUnit.YEARS.between(date, now)
-    val months = ChronoUnit.MONTHS.between(date, now)
-    val days = ChronoUnit.DAYS.between(date, now)
-    val hours = ChronoUnit.HOURS.between(date, now)
-    val minutes = ChronoUnit.MINUTES.between(date, now)
-    val seconds = ChronoUnit.SECONDS.between(date, now)
+  def since(implicit now: ZonedDateTime): String = {
+    val years = ChronoUnit.YEARS.between(pubDate, now)
+    val months = ChronoUnit.MONTHS.between(pubDate, now)
+    val days = ChronoUnit.DAYS.between(pubDate, now)
+    val hours = ChronoUnit.HOURS.between(pubDate, now)
+    val minutes = ChronoUnit.MINUTES.between(pubDate, now)
+    val seconds = ChronoUnit.SECONDS.between(pubDate, now)
 
     // compatibility with moment.js in JS layer: http://momentjs.com/docs/#/displaying/fromnow/
     if (seconds >= 0 && seconds < 45) "a few seconds ago"
@@ -54,16 +49,16 @@ case class Article(source: FeedSource, title: String, link: String, commentsLink
     else "not yet"
   }
 
+  val maxSummaryLength = 250
+
   def croppedText: String = crop(text, maxSummaryLength)
 }
 
 object Article {
-  //build language detector:
   val languageDetector: LanguageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard)
     .withProfiles(new LanguageProfileReader().readAllBuiltIn)
     .build
 
-  //create a text object factory
   val textObjectFactory: TextObjectFactory = CommonTextObjectFactories.forDetectingShortCleanText()
 
   def isEnglish(article: Article): Boolean = {
@@ -74,8 +69,8 @@ object Article {
     }
   }
 
-  def rss(source: FeedSource, item: Node): Option[Article] = {
-    val title = stripTitle(unescape(item \ "title"), source)
+  def rss(source: FeedSource, feed: Feed, item: Node): Option[Article] = {
+    val title = stripTitle(unescape(item \ "title"), feed)
     val link = unescapeOption(item \ "link")
     if (link isEmpty) {
       Logger.warn("Couldn't find a valid link among: " + (item \ "link"))
@@ -84,7 +79,7 @@ object Article {
 
     val commentsLink = unescapeOption(item \ "comments")
 
-    def dateOption: Option[OffsetDateTime] = {
+    def dateOption: Option[ZonedDateTime] = {
       val dateNodes = item \ "date" ++ item \ "pubDate"
 
       for (dateNode <- dateNodes; nodeText <- unescapeOption(dateNode)) {
@@ -92,42 +87,35 @@ object Article {
         if (parsed.isLeft)
           return parsed.left.toOption
 
-        Logger.warn("Failed to parse date of '" + title + "' in feed '" + source.title.getOrElse(source.url) + "': " + parsed.right.get)
+        Logger.warn("Failed to parse date of '" + title + "' in feed '" + feed.title.getOrElse(source.url) + "': " + parsed.right.get)
       }
 
-      Logger.warn("No parseable date in '" + title + "' in feed '" + source.title.getOrElse(source.url) + "' among: " + dateNodes)
+      Logger.warn("No parseable date in '" + title + "' in feed '" + feed.title.getOrElse(source.url) + "' among: " + dateNodes)
       None
     }
 
     val parsedDescription = parseHtmlContent(unescape(item \ "description"))
-    val selfLinks = Seq(link, source.siteUrl.map(_.toString)).flatten
+    val selfLinks = Seq(link, feed.siteUrl.map(_.toString)).flatten
     val strippedDescription = stripDescription(parsedDescription, selfLinks: _*)
     val maybeImgSrc = imageSource(strippedDescription, link get)
-    val strippedText = stripText(strippedDescription, title, source)
+    val strippedText = stripText(strippedDescription, title, feed)
 
-    dateOption.map(new Article(source, title, link get, commentsLink, _, maybeImgSrc, strippedText)) filter isEnglish
+    dateOption.map(Article(None, source.id, feed.id, title, new URI(link get), commentsLink.map(new URI(_)), _, maybeImgSrc, strippedText)) filter isEnglish
   }
 
-  def stripText(content: NodeSeq, title: String, source: FeedSource): String = {
-    val feedTitle = source.title.getOrElse("")
+  def stripText(content: NodeSeq, title: String, feed: Feed): String = {
+    val feedTitle = feed.title.getOrElse("")
     content.text.trim.replaceAll("\\s+", " ")
       .replaceAll(quote(s" The post $title appeared first on $feedTitle.") + "$", "") // WIRED
       .replaceAll(quote(s"$title is a post from $feedTitle") + "$", "") // CSS-Tricks
   }
 
-  def stripTitle(title: String, source: FeedSource): String = {
-    title.replaceFirst(" - " + quote(source.title.getOrElse("")) + "$", "")
+  def stripTitle(title: String, feed: Feed): String = {
+    title.replaceFirst(" - " + quote(feed.title.getOrElse("")) + "$", "")
   }
 
-  /*
-  <link rel="replies" type="application/atom+xml" href="http://keaplogik.blogspot.com/feeds/7850892430692034846/comments/default" title="Post Comments" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-  <link rel="replies" type="text/html" href="http://keaplogik.blogspot.com/2016/01/java-base64-url-safe-encoding.html#comment-form" title="0 Comments" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-  <link rel="edit" type="application/atom+xml" href="http://www.blogger.com/feeds/3047562558564532519/posts/default/7850892430692034846" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-  <link rel="self" type="application/atom+xml" href="http://www.blogger.com/feeds/3047562558564532519/posts/default/7850892430692034846" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-  <link rel="alternate" type="text/html" href="http://keaplogik.blogspot.com/2016/01/java-base64-url-safe-encoding.html" title="Java Base64 URL Safe Encoding" xmlns="http://www.w3.org/2005/Atom" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:blogger="http://schemas.google.com/blogger/2008" xmlns:georss="http://www.georss.org/georss" xmlns:gd="http://schemas.google.com/g/2005" xmlns:thr="http://purl.org/syndication/thread/1.0"/>
-     */
-  def atom(source: FeedSource, entry: Node): Option[Article] = {
-    val title = stripTitle(unescape(entry \ "title"), source)
+  def atom(source: FeedSource, feed: Feed, entry: Node): Option[Article] = {
+    val title = stripTitle(unescape(entry \ "title"), feed)
     val link = (entry \ "link").filter(n => n \@ "rel" == "alternate" || (n \@ "rel" isEmpty)) \@ "href"
     if (link isEmpty) {
       Logger.warn("Failed to parse feed entry link from: " + (entry \ "link"))
@@ -137,18 +125,18 @@ object Article {
 
     val date = parseInternetDateTime(unescape(entry \ "updated"))
     if (date.isRight) {
-      Logger.warn("Failed to parse date of '" + title + "' in feed '" + source.title.getOrElse(source.url) + "': " + date.right.get)
+      Logger.warn("Failed to parse date of '" + title + "' in feed '" + feed.title.getOrElse(source.url) + "': " + date.right.get)
       return None
     }
 
     val parsedDescription = parseHtmlContent(unescapeOption(entry \ "content").orElse(unescapeOption(entry \ "summary")).getOrElse(""))
 
-    val selfLinks = Seq(Some(link), source.siteUrl.map(_.toString)).flatten
+    val selfLinks = Seq(Some(link), feed.siteUrl.map(_.toString)).flatten
     val strippedDescription = stripDescription(parsedDescription, selfLinks: _*)
     val maybeImgSrc = imageSource(strippedDescription, link)
-    val strippedText = stripText(strippedDescription, title, source)
+    val strippedText = stripText(strippedDescription, title, feed)
 
-    Some(new Article(source, title, link, commentsLink, date.left get, maybeImgSrc, strippedText)) filter isEnglish
+    Some(Article(None, source.id, feed.id, title, new URI(link), commentsLink.map(new URI(_)), date.left get, maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def tooSmall(img: Node): Boolean = {
@@ -178,7 +166,7 @@ object Article {
       "http://assets.feedblitz.com/i/linkedin20.png",
       "http://assets.feedblitz.com/i/twitter20.png",
       "http://assets.feedblitz.com/i/rss20.png")
-    val imgs = content \\ "img" filterNot (img => bannedImgSrcs contains (img \@ "src")) filterNot (tooSmall(_))
+    val imgs = content \\ "img" filterNot (img => bannedImgSrcs contains (img \@ "src")) filterNot tooSmall
     imgs.headOption map (_ \@ "src") flatMap { src =>
       try {
         Some(new URI(link).resolve(src))
@@ -200,8 +188,8 @@ object Article {
   }
 
   def enterSingleNode(nodes: NodeSeq): NodeSeq = {
-    if (nodes.size == 1 && nodes(0).isInstanceOf[Elem] && nodes(0).label != "a")
-      enterSingleNode(nodes(0).asInstanceOf[Elem].child)
+    if (nodes.size == 1 && nodes.head.isInstanceOf[Elem] && nodes.head.label != "a")
+      enterSingleNode(nodes.head.asInstanceOf[Elem].child)
     else nodes
   }
 
@@ -212,7 +200,6 @@ object Article {
         n.label == "div" && n \@ "class" == "feedflare" ||
         n.label == "div" && n \@ "class" == "shares" ||
         n.label == "div" && n \@ "class" == "blogger-post-footer" ||
-//        n.label == "figure" ||
         n.label == "a" && (n text) == "Read More" ||
         n.label == "a" && (n text) == "Comments" ||
         n.label == "a" && (n text) == "Read more..." ||
@@ -222,46 +209,49 @@ object Article {
         n.label == "span" && List("[link]", "[comments]").contains(n \ "a" text) ||
         n.label == "table" && (n \ "tr" \ "td" \ "div" \ "img").exists(_ \@ "src" == "http://statisches.auslieferung.commindo-media-ressourcen.de/advertisement.gif")
     } map {
-      case <br /> => Text(" ")
+      case <br/> => Text(" ")
       case n => n
     }
   }
+}
 
-      /*
-<table width="650">
-<tr>
-<td width="650">
-<div style="width:650px;">
-<img src="http://statisches.auslieferung.commindo-media-ressourcen.de/advertisement.gif" alt="" border="0" /><br />
-<a href="http://auslieferung.commindo-media-ressourcen.de/random.php?mode=target&collection=smashing-rss&position=1" target="_blank">
-<img src="http://auslieferung.commindo-media-ressourcen.de/random.php?mode=image&collection=smashing-rss&position=1" border="0" alt="" />
-</a>&nbsp;
-<a href="http://auslieferung.commindo-media-ressourcen.de/random.php?mode=target&collection=smashing-rss&position=2" target="_blank">
-<img src="http://auslieferung.commindo-media-ressourcen.de/random.php?mode=image&collection=smashing-rss&position=2" border="0" alt="" />
-</a>&nbsp;
-<a href="http://auslieferung.commindo-media-ressourcen.de/random.php?mode=target&collection=smashing-rss&position=3" target="_blank">
-<img src="http://auslieferung.commindo-media-ressourcen.de/random.php?mode=image&collection=smashing-rss&position=3" border="0" alt="" />
-</a>
-</div>
-</td>
-</tr>
-</table>
-      */
+class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
+  def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
 
-      // <span><a href="https://vimeo.com/169289500">[link]</a></span> &#32; <span><a href="https://www.reddit.com/r/videos/comments/4meq4l/hoe_lee_shit/">[comments]</a></span> </td></tr></table>
-      /*
-      <div class="shares">
-        <div class="icons">
-          <span class="label">Share:</span>
-          <a href="https://twitter.com/intent/tweet?url=" title="Share on Twitter">
-            <img src="/t_mini-a.png"></a>
-          <a href="https://facebook.com/sharer.php?u=" title="Share on Facebook">
-            <img src="/fb-icon-20.png"></a>
-          <a href="https://plus.google.com/share?url=" title="Share on Google Plus">
-            <img src="/gplus-16.png"></a>
-        </div>
-        <div class="comment">if you found this article useful, please share it. I appreciate the feedback and encouragement</div>
-      </div>
-      <div class="clear"></div>
-       */
+  def sourceId = column[Long]("source_id")
+
+  def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
+
+  def feedId = column[Option[Long]]("feed_id")
+
+  def feed = foreignKey("feed_fk", feedId, feeds)(_.id, onUpdate = Restrict, onDelete = Cascade)
+
+  def title = column[String]("title")
+
+  def link = column[String]("link")
+
+  def commentsLink = column[Option[String]]("comments_link")
+
+  def pubDate = column[ZonedDateTime]("pub_date")
+
+  def imageSource = column[Option[String]]("image_source")
+
+  def text = column[String]("text")
+
+  override def * =
+    (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text).shaped <>( {
+      case (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text) =>
+        Article(id, sourceId, feedId, title, new URI(link), commentsLink.map(new URI(_)), pubDate, imageSource.map(new URI(_)), text)
+    }, { a: Article =>
+      Some((a.id, a.sourceId, a.feedId, a.title, a.link.toString, a.commentsLink.map(_.toString), a.pubDate,
+        a.imageSource.map(_.toString), a.text))
+    })
+}
+
+object articles extends TableQuery(new ArticlesTable(_)) {
+  val insert = this returning articles.map(_.id)
+}
+
+case class CachedArticle(source: FeedSource, feed: Feed, record: Article) extends Ordered[CachedArticle] {
+  override def compare(that: CachedArticle): Int = record.compare(that.record)
 }

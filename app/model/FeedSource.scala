@@ -6,8 +6,6 @@ import slick.driver.PostgresDriver.api._
 import slick.lifted.Tag
 
 case class FeedSource(id: Long, section: String, group: Option[String], url: URI, siteUrl: Option[URI] = None, title: Option[String] = None) {
-  def favicon: Option[URI] =
-    siteUrl.map(_.resolve("/favicon.ico"))
 }
 
 class SourcesTable(tag: Tag) extends Table[FeedSource](tag, "sources") {

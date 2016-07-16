@@ -1,65 +1,70 @@
-@import model.Article
+@import model.CachedArticle
 @import model.Permalink
-@import java.time.OffsetDateTime
+@import java.time.ZonedDateTime
 
-@(section: String, articles: Iterable[Article], permalink: Permalink)(implicit now: OffsetDateTime)
+@(section: String, articles: Seq[CachedArticle], permalink: Permalink)(implicit now: ZonedDateTime)
 
 <div class="row grid" data-masonry='{ "itemSelector": ".grid-item" }'>
-    @for(article <- articles) {
-        <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4 grid-item">
-            <article class='article'>
-                <h4><a href="@article.link" class="title" target="_blank">@article.title</a></h4>
+    @for(articleGroup <- articles grouped 5) {
+        @for(article <- articleGroup) {
+            <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4 grid-item">
+                <article class='article'>
+                    <h4><a href="@article.record.link" class="title" target="_blank">@article.record.title</a></h4>
 
-                @article.image.map { img =>
-                    <div class="image">
-                        <a href="@article.link" target="_blank"><img src="@img" alt="@article.title" onload="this.parentNode.parentNode.className+=' loaded'"/></a>
-                    </div>
-                }
+                    @article.record.imageSource.map { imgSrc =>
+                        <div class="image">
+                            <a href="@article.record.link" target="_blank"><img src="@imgSrc" alt="@article.record.title" onload="this.parentNode.parentNode.className+=' loaded'"/></a>
+                        </div>
+                    }
 
-                @if(article.croppedText.nonEmpty) {
-                    <p>@article.croppedText <a href="@article.link" class="source" target="_blank">&raquo;</a></p>
-                }
+                    @if(article.record.croppedText.nonEmpty) {
+                        <p>@article.record.croppedText <a href="@article.record.link" class="source" target="_blank">&raquo;</a></p>
+                    }
 
-                <nav>
-                    <p>
-                        @article.source.siteUrl.fold(Html(article.source.title.getOrElse(""))) { siteUrl =>
-                            <a href="@siteUrl" class="source" target="_blank">
-                                @article.source.favicon.map { favicon => <img src="@favicon" class="favicon" onerror="this.style.display='none'"/> }
-                                @article.source.title.getOrElse("")
-                            </a>
-                            <span class="text-muted">·</span>
-                        }
+                    <nav>
+                        <p>
+                            @article.feed.siteUrl.fold(Html(article.feed.title.getOrElse(""))) { siteUrl =>
+                                <a href="@siteUrl" class="source" target="_blank">
+                                    @article.feed.favicon.map { favicon => <img src="@favicon" class="favicon" onerror="this.style.display='none'"/> }
+                                    @article.feed.title.getOrElse("")
+                                </a>
+                                <span class="text-muted">·</span>
+                            }
 
-                        <span class="text-nowrap">
-                            <small class="text-muted"><span class="glyphicon glyphicon-link" aria-hidden="true"></span></small>
-                            <a href="@article.link" class="source" target="_blank">
-                                <time class="since-timestamp" datetime="@article.date">@article.since</time> &raquo;
-                            </a>
-                        </span>
-                    </p>
-                </nav>
+                            <span class="text-nowrap">
+                                <small class="text-muted"><span class="glyphicon glyphicon-link" aria-hidden="true"></span></small>
+                                <a href="@article.record.link" class="source" target="_blank">
+                                    <time class="since-timestamp" datetime="@article.record.pubDate">@article.record.since</time> &raquo;
+                                </a>
+                            </span>
+                        </p>
+                    </nav>
 
-                <footer>
-                    <p>
-                        <ul class="share-buttons pull-left">
-                            <li><a class="share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)" target="_blank" title="Share on Facebook" onclick="return share(this)"><i class="fa fa-lg fa-facebook-square"></i></a></li>
-                            <li><a class="share-twitter" href="https://twitter.com/intent/tweet?source=@helper.urlEncode(article.link)&text=@helper.urlEncode(article.title):%20@helper.urlEncode(article.link)" target="_blank" title="Tweet" onclick="return share(this)"><i class="fa fa-lg fa-twitter-square"></i></a></li>
-                            <li><a class="share-googleplus" href="https://plus.google.com/share?url=@helper.urlEncode(article.link)" target="_blank" title="Share on Google+" onclick="return share(this)"><i class="fa fa-lg fa-google-plus-square"></i></a></li>
-                            <li><a class="share-tumblr" href="http://www.tumblr.com/share?v=3&u=@helper.urlEncode(article.link)&t=@helper.urlEncode(article.title)&s=" target="_blank" title="Post to Tumblr" onclick="return share(this)"><i class="fa fa-lg fa-tumblr-square"></i></a></li>
-                            <li><a class="share-pinterest" href="http://pinterest.com/pin/create/button/?url=@helper.urlEncode(article.link)&description=@helper.urlEncode(article.title)" target="_blank" title="Pin it" onclick="return share(this)"><i class="fa fa-lg fa-pinterest-square"></i></a></li>
-                            <li><a class="share-reddit" href="http://www.reddit.com/submit?url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)" target="_blank" title="Submit to Reddit" onclick="return share(this)"><i class="fa fa-lg fa-reddit-square"></i></a></li>
-                            <li><a class="share-linkedin" href="http://www.linkedin.com/shareArticle?mini=true&url=@helper.urlEncode(article.link)&title=@helper.urlEncode(article.title)&summary=@helper.urlEncode(article.title)&source=@helper.urlEncode(article.link)" target="_blank" title="Share on LinkedIn" onclick="return share(this)"><i class="fa fa-lg fa-linkedin-square"></i></a></li>
-                            <li><a class="share-email" href="mailto:?subject=@article.title&body=@article.title: @helper.urlEncode(article.link)" title="Email"><i class="fa fa-lg fa-envelope-square"></i></a></li>
-                            &nbsp;
-                        </ul>
+                    <footer>
+                        <p>
+                            <ul class="share-buttons pull-left">
+                                <li><a class="share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=@helper.urlEncode(article.record.link.toString)&t=@helper.urlEncode(article.record.title)" target="_blank" title="Share on Facebook" onclick="return share(this)"><i class="fa fa-lg fa-facebook-square"></i></a></li>
+                                <li><a class="share-twitter" href="https://twitter.com/intent/tweet?source=@helper.urlEncode(article.record.link.toString)&text=@helper.urlEncode(article.record.title):%20@helper.urlEncode(article.record.link.toString)" target="_blank" title="Tweet" onclick="return share(this)"><i class="fa fa-lg fa-twitter-square"></i></a></li>
+                                <li><a class="share-googleplus" href="https://plus.google.com/share?url=@helper.urlEncode(article.record.link.toString)" target="_blank" title="Share on Google+" onclick="return share(this)"><i class="fa fa-lg fa-google-plus-square"></i></a></li>
+                                <li><a class="share-tumblr" href="http://www.tumblr.com/share?v=3&u=@helper.urlEncode(article.record.link.toString)&t=@helper.urlEncode(article.record.title)&s=" target="_blank" title="Post to Tumblr" onclick="return share(this)"><i class="fa fa-lg fa-tumblr-square"></i></a></li>
+                                <li><a class="share-pinterest" href="http://pinterest.com/pin/create/button/?url=@helper.urlEncode(article.record.link.toString)&description=@helper.urlEncode(article.record.title)" target="_blank" title="Pin it" onclick="return share(this)"><i class="fa fa-lg fa-pinterest-square"></i></a></li>
+                                <li><a class="share-reddit" href="http://www.reddit.com/submit?url=@helper.urlEncode(article.record.link.toString)&title=@helper.urlEncode(article.record.title)" target="_blank" title="Submit to Reddit" onclick="return share(this)"><i class="fa fa-lg fa-reddit-square"></i></a></li>
+                                <li><a class="share-linkedin" href="http://www.linkedin.com/shareArticle?mini=true&url=@helper.urlEncode(article.record.link.toString)&title=@helper.urlEncode(article.record.title)&summary=@helper.urlEncode(article.record.title)&source=@helper.urlEncode(article.record.link.toString)" target="_blank" title="Share on LinkedIn" onclick="return share(this)"><i class="fa fa-lg fa-linkedin-square"></i></a></li>
+                                <li><a class="share-email" href="mailto:?subject=@article.record.title&body=@article.record.title: @helper.urlEncode(article.record.link.toString)" title="Email"><i class="fa fa-lg fa-envelope-square"></i></a></li>
+                                &nbsp;
+                            </ul>
 
-                        <ul class="follow-buttons pull-right">
-                            <li><a class="follow-feed" href="@article.source.url" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
-                        </ul>
-                    </p>
-                </footer>
-            </article>
-        </div>
+                            <ul class="follow-buttons pull-right">
+                                <li><a class="follow-feed" href="@article.source.url" target="_blank" title="Origin Feed"><i class="fa fa-lg fa-rss"></i></a></li>
+                            </ul>
+                        </p>
+                    </footer>
+                </article>
+            </div>
+        }
+<!--        <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4 grid-item">
+            <script type='text/javascript' src='//clksite.com/adServe/banners?tid=147894_258418_0'></script>
+        </div> -->
     }
 </div>
 

@@ -1,9 +1,9 @@
-@import java.time.OffsetDateTime
-@import model.Article
+@import java.time.ZonedDateTime
+@import model.CachedArticle
 @import model.Permalink
 @import play.api.Configuration
 
-@(section: String, articles: Iterable[Article], permalink: Permalink)(implicit feedSections: Configuration, now: OffsetDateTime, request: Request[AnyContent])
+@(section: String, articles: Seq[CachedArticle], permalink: Permalink)(implicit feedSections: Configuration, now: ZonedDateTime, request: Request[AnyContent])
 
 @defining(feedSections.getString(section).get +
           permalink.requested.fold("") { _ =>

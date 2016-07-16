@@ -1,8 +1,8 @@
 import java.time.Clock
 
 import com.google.inject.AbstractModule
-import play.api.Configuration
-import services.FeedCache
+import play.api.libs.concurrent.AkkaGuiceSupport
+import services.{FeedCache, FeedFetcherActor, FeedParserActor}
 
 /**
  * This class is a Guice module that tells Guice how to bind several
@@ -14,11 +14,14 @@ import services.FeedCache
  * adding `play.modules.enabled` settings to the `application.conf`
  * configuration file.
  */
-class Module extends AbstractModule {
+class Module extends AbstractModule with AkkaGuiceSupport {
   override def configure() = {
     // Use the system clock as the default implementation of Clock
     bind(classOf[Clock]).toInstance(Clock.systemDefaultZone)
 
     bind(classOf[FeedCache]).asEagerSingleton()
+
+    bindActor[FeedFetcherActor]("feed-fetcher-actor")
+    bindActor[FeedParserActor]("feed-parser-actor")
   }
 }

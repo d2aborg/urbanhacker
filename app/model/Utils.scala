@@ -1,15 +1,18 @@
 package model
 
 import java.net.URI
-import java.time.{OffsetDateTime, ZoneOffset, ZonedDateTime}
-import java.time.format._
+import java.sql.Timestamp
 import java.time.format.DateTimeFormatter._
+import java.time.format._
 import java.time.temporal.ChronoField._
+import java.time.{OffsetDateTime, ZoneOffset, ZonedDateTime}
 import java.util.Locale
 
 import org.apache.commons.lang3.StringEscapeUtils._
 import play.api.Logger
+import slick.dbio.{DBIOAction, Effect, NoStream}
 
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scala.xml.NodeSeq
 
@@ -24,16 +27,24 @@ object Utils {
       text
   }
 
-  def parseOffsetDateTime(dts: String, dtf: DateTimeFormatter): Option[OffsetDateTime] = {
+  def toOffsetDateTime(ts: Timestamp): OffsetDateTime = ts.toInstant.atOffset(ZoneOffset.UTC)
+
+  def toSqlTimestamp(odt: OffsetDateTime): Timestamp = new Timestamp(odt.toInstant.toEpochMilli)
+
+  def toSqlTimestamp(zdt: ZonedDateTime): Timestamp = new Timestamp(zdt.toInstant.toEpochMilli)
+
+  def parseOffsetDateTime(dts: String, dtf: DateTimeFormatter): Option[OffsetDateTime] =
+    parseZonedDateTime(dts, dtf).map(_ withZoneSameInstant ZoneOffset.UTC toOffsetDateTime)
+
+  def parseZonedDateTime(dts: String, dtf: DateTimeFormatter): Option[ZonedDateTime] =
     nonEmpty(dts).flatMap { dts =>
       Try(ZonedDateTime parse(dts, dtf)) match {
-        case Success(ts) => Some(ts withZoneSameInstant ZoneOffset.UTC toOffsetDateTime)
+        case Success(ts) => Some(ts)
         case Failure(e) =>
           Logger.warn("Failed to parse date: " + dts, e)
           None
       }
     }
-  }
 
   val internetDateTimeFormats = Seq(
     // 2016-04-08T00:00:00-07:00
@@ -67,11 +78,11 @@ object Utils {
     // 2015-09-29 14:56:55 UTC
     ("ISO With Spaces", DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss zzz", Locale.US)))
 
-  def parseInternetDateTime(dts: String): Either[OffsetDateTime, Seq[DateTimeParseException]] = {
-    def parseInternetDateTime(dtf: DateTimeFormatter, desc: String): Either[OffsetDateTime, DateTimeParseException] = {
+  def parseInternetDateTime(dts: String): Either[ZonedDateTime, Seq[DateTimeParseException]] = {
+    def parseInternetDateTime(dtf: DateTimeFormatter, desc: String): Either[ZonedDateTime, DateTimeParseException] = {
       try {
-        val parsed = ZonedDateTime parse(dts replaceFirst("^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ", ""), dtf)
-        Left(parsed withZoneSameInstant ZoneOffset.UTC toOffsetDateTime)
+        val parsed = ZonedDateTime parse(dts replaceFirst("^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ", ""), dtf) withZoneSameInstant ZoneOffset.UTC
+        Left(parsed)
       } catch {
         case e: DateTimeParseException => Right(new DateTimeParseException(desc + ": " + e.getMessage, e.getParsedString, e.getErrorIndex, e))
       }
@@ -102,4 +113,47 @@ object Utils {
         Logger.warn("Failed to parse URI: " + uri, maybeURI.failed.get)
       maybeURI.toOption
     }
+
+  class Tappable[A](a: A) {
+    def tap[U](action: (A) => U): A = {
+      action(a)
+      a
+    }
+  }
+
+  implicit def any2Tappable[A](a: A): Tappable[A] = new Tappable[A](a)
+
+  class OptionFuture[A](of: Option[Future[A]]) {
+    def sequence(implicit ec: ExecutionContext): Future[Option[A]] = Futures.sequence(of)
+  }
+
+  implicit def optionFuture[A](of: Option[Future[A]]): OptionFuture[A] = new OptionFuture[A](of)
+}
+
+object Futures {
+  def sequence[A](maybeFuture: Option[Future[A]])
+                 (implicit ec: ExecutionContext): Future[Option[A]] = maybeFuture match {
+    case Some(future) => future.map(Some(_))
+    case None => Future.successful(None)
+  }
+
+  def traverse[A, B](option: Option[A])
+                    (action: A => Future[B])
+                    (implicit ec: ExecutionContext): Future[Option[B]] = {
+    sequence(option.map(action))
+  }
+}
+
+object DBIOA {
+  def sequence[R](maybeAction: Option[DBIOAction[R, NoStream, Effect.Read]])(implicit executor: ExecutionContext): DBIOAction[Option[R], NoStream, Effect.Read] = {
+    maybeAction.fold(DBIOAction.successful(Option.empty[R]): DBIOAction[Option[R], NoStream, Effect.Read]) {
+      _.map(Some(_))
+    }
+  }
+
+  def traverse[A, B](option: Option[A])
+                    (action: A => DBIOAction[B, NoStream, Effect.Read])
+                    (implicit ec: ExecutionContext): DBIOAction[Option[B], NoStream, Effect.Read] = {
+    sequence(option.map(action))
+  }
 }

@@ -1,14 +1,14 @@
 package model
 
-import java.time.OffsetDateTime
+import java.time.{ZoneOffset, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-import model.Utils.parseOffsetDateTime
+import model.Utils.parseZonedDateTime
 
-case class Permalink(timestamp: OffsetDateTime, page: Int, nextPage: Option[Int] = None, requested: Option[OffsetDateTime] = None) {
-  def urlTimestamp: String = timestamp.format(Permalink.urlFormatter)
-  def viewTimestamp: String = timestamp.format(Permalink.viewFormatter)
+case class Permalink(timestamp: ZonedDateTime, page: Int, nextPage: Option[Int] = None, requested: Option[ZonedDateTime] = None) {
+  def urlTimestamp: String = timestamp.withZoneSameInstant(ZoneOffset.UTC).format(Permalink.urlFormatter)
+  def viewTimestamp: String = timestamp.withZoneSameInstant(ZoneOffset.UTC).format(Permalink.viewFormatter)
 
   def prevPage: Option[Int] = Some(page - 1).filter(_ >= 1)
 }
@@ -19,5 +19,5 @@ object Permalink {
   val urlFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSSXX", Locale.US)
   val viewFormatter: DateTimeFormatter = DateTimeFormatter.RFC_1123_DATE_TIME
 
-  def parseUrlTimestamp(dts: String): Option[OffsetDateTime] = parseOffsetDateTime(dts, urlFormatter)
+  def parseUrlTimestamp(dts: String): Option[ZonedDateTime] = parseZonedDateTime(dts, urlFormatter)
 }

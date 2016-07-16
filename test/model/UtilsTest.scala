@@ -1,16 +1,16 @@
 package model
 
-import java.time.OffsetDateTime
+import java.time.{OffsetDateTime, ZonedDateTime}
 
 import org.scalatest._
 
 class UtilsTest extends FlatSpec with Matchers {
   "Permalink.parseUrlTimestamp" should "parse URL date time" in {
-    Permalink.parseUrlTimestamp("20160705T201649.882Z") shouldBe Some(OffsetDateTime.parse("2016-07-05T20:16:49.882Z"))
+    Permalink.parseUrlTimestamp("20160705T201649.882Z") shouldBe Some(ZonedDateTime.parse("2016-07-05T20:16:49.882Z"))
   }
 
   "Permalink.urlTimestamp" should "format URL date time" in {
-    Permalink(OffsetDateTime.parse("2016-07-05T20:16:49.882Z"), 1, None).urlTimestamp shouldBe "20160705T201649.882Z"
+    Permalink(ZonedDateTime.parse("2016-07-05T20:16:49.882Z"), 1, None).urlTimestamp shouldBe "20160705T201649.882Z"
   }
 
   "Utils.parseInternetDateTime" should "parse incorrect weekdays" in  {
