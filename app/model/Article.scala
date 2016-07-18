@@ -254,14 +254,15 @@ object articles extends TableQuery(new ArticlesTable(_)) {
   val byId = this.findBy(_.id.get)
 
   def newerThan(section: String,
+                historicTimestamp: ZonedDateTime,
                 link: Rep[String],
                 pubDate: Rep[ZonedDateTime],
                 feedTimestamp: Rep[ZonedDateTime]): Query[ArticlesTable, Article, Seq] =
     for {
-      sb <- sources.bySection(section)
-      fb <- feeds if fb.sourceId === sb.id
-      ab <- articles if ab.feedId === fb.id && ab.link === link && (ab.pubDate > pubDate || (ab.pubDate === pubDate && fb.timestamp > feedTimestamp))
-    } yield ab
+      s <- sources.bySection(section)
+      f <- feeds if f.sourceId === s.id && f.timestamp <= historicTimestamp
+      a <- articles if a.feedId === f.id && a.link === link && (a.pubDate > pubDate || (a.pubDate === pubDate && f.timestamp > feedTimestamp))
+    } yield a
 }
 
 case class CachedArticle(source: FeedSource, feed: Feed, record: Article) extends Ordered[CachedArticle] {

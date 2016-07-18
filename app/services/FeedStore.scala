@@ -58,7 +58,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
             val articlesWithSourceAndFeed = for {
               s <- sources.bySection(section)
               f <- feeds if f.sourceId === s.id && f.timestamp <= timestamp
-              a <- articles.sortBy(_.pubDate.desc) if a.feedId === f.id && !articles.newerThan(section, a.link, a.pubDate, f.timestamp).exists
+              a <- articles.sortBy(_.pubDate.desc) if a.feedId === f.id && !articles.newerThan(section, historicTimestamp, a.link, a.pubDate, f.timestamp).exists
             } yield (s, f, a)
 
             val offset = (pageNum - 1) * pageSize
