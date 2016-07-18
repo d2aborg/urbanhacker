@@ -43,4 +43,7 @@ class DownloadsTable(tag: Tag) extends Table[Download](tag, "downloads") {
 }
 
 object downloads extends TableQuery(new DownloadsTable(_)) {
+  val returningId = this returning this.map(_.id.get)
+
+  val byId = this.findBy(_.id.get)
 }

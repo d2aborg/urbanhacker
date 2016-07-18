@@ -14,6 +14,7 @@ import services.MyPostgresDriver.api._
 import slick.dbio.DBIOAction
 import slick.dbio.Effect.Read
 import slick.driver.JdbcProfile
+import slick.lifted.AppliedCompiledFunction
 import slick.profile.{FixedSqlAction, FixedSqlStreamingAction, SqlStreamingAction}
 
 import scala.collection.SortedSet
@@ -50,23 +51,14 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   }
 
   def articlesByFrecency(section: String, timestamp: ZonedDateTime, pageNum: Int, pageSize: Int): Future[Option[(Seq[CachedArticle], ZonedDateTime, Boolean)]] = {
-    val sourcesBySection = for {
-      s <- sources if s.section startsWith section
-    } yield s
-
-    val historicFeeds = for {
-      s <- sourcesBySection
-      f <- feeds if f.sourceId === s.id && f.timestamp <= timestamp
-    } yield f
-
     db.run {
-      historicFeeds.map(_.timestamp).max.result.flatMap { historicTimestamp =>
+      feeds.historic(section, timestamp).map(_.timestamp).max.result.flatMap { historicTimestamp =>
         DBIOA.sequence {
           historicTimestamp.map { historicTimestamp =>
             val articlesWithSourceAndFeed = for {
-              s <- sourcesBySection
-              f <- historicFeeds if f.sourceId === s.id
-              a <- articles.sortBy(_.pubDate.desc) if a.feedId === f.id && !newerThan(sourcesBySection, s, f, a).exists
+              s <- sources.bySection(section)
+              f <- feeds if f.sourceId === s.id && f.timestamp <= timestamp
+              a <- articles.sortBy(_.pubDate.desc) if a.feedId === f.id && !articles.newerThan(section, a.link, a.pubDate, f.timestamp).exists
             } yield (s, f, a)
 
             val offset = (pageNum - 1) * pageSize
@@ -82,14 +74,6 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         }
       }
     }
-  }
-
-  def newerThan(sources: Query[SourcesTable, FeedSource, Seq], s: SourcesTable, f: FeedsTable, a: ArticlesTable): Query[ArticlesTable, Article, Seq] = {
-    for {
-      sb <- sources
-      fb <- feeds if fb.sourceId === sb.id
-      ab <- articles if ab.feedId === fb.id && a.link === ab.link && (ab.pubDate > a.pubDate || (ab.pubDate === a.pubDate && fb.timestamp > f.timestamp))
-    } yield ab
   }
 
   def byFrecency(articles: SortedSet[CachedArticle], timestamp: OffsetDateTime): Seq[(Double, CachedArticle)] = {
@@ -113,76 +97,57 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     1.0 / weightedAveragePeriod
   }
 
-  def loadUnparsedDownload(downloadId: Long): Future[Option[Download]] = {
-    db.run(downloads
-      .filter(_.id === downloadId)
-      .filterNot(d => feeds.filter(f => f.sourceId === d.sourceId && f.timestamp === d.timestamp).exists)
-      .result.headOption)
-  }
+  def loadUnparsedDownload(downloadId: Long): Future[Option[Download]] =
+    db.run {
+      downloads
+        .filter(_.id === downloadId)
+        .filterNot(feeds.byDownload(_).exists)
+        .result.headOption
+    }
 
   def loadUnparsedDownloadIds(source: FeedSource): Future[Seq[Long]] = {
-    val query = downloads
-      .filter(_.sourceId === source.id)
-      .filterNot(d => feeds.filter(f => f.sourceId === d.sourceId && f.timestamp === d.timestamp).exists)
-      .sortBy(_.timestamp)
-      .map(_.id.get)
-
-    db.run(query.result) tap { eventualIds =>
+    db.run {
+      downloads
+        .filter(_.sourceId === source.id)
+        .filterNot(d => feeds.filter(f => f.sourceId === d.sourceId && f.timestamp === d.timestamp).exists)
+        .sortBy(_.timestamp)
+        .map(_.id.get).result
+    } tap { eventualIds =>
       for (ids <- eventualIds if ids.nonEmpty)
-        Logger.info(s"'''> Loaded ${ids.size} Unparsed: ${source.url}")
+        Logger.info(s"'''> Loaded Ids of ${ids.size} Unparsed Downloads: ${source.url}")
     }
   }
 
-  def loadPreviousMetaData(download: Download): Future[Option[MetaData]] = {
-    db.run(downloads
-      .filter(_.sourceId === download.sourceId)
-      .filter(_.timestamp < download.metaData.timestamp)
-      .sortBy(_.timestamp.desc)
-      .result
-      .headOption
-      .map(_.map(_.metaData)))
-  }
-
-  def loadPreviousCachedFeed(source: FeedSource, timestamp: ZonedDateTime): Future[Option[CachedFeed]] = {
-    val query = feeds
-      .filter(_.sourceId === source.id)
-      .filter(_.timestamp < timestamp)
-      .sortBy(_.timestamp.desc)
-
-    db.run(query.result.headOption).map {
-      _.map {
-        CachedFeed(source, _, Seq.empty)
-      }
-    }
-  }
-
-  def saveDownload(source: FeedSource)(download: Download): Future[Long] = {
-    db.run((downloads returning downloads.map(_.id.get)) += download) tap { eventualId =>
+  def saveDownload(source: FeedSource)(download: Download): Future[Long] =
+    db.run {
+      downloads.returningId += download
+    } tap { eventualId =>
       for (id <- eventualId)
         Logger.info("...> Saved Download " + id + ": " + source.url)
     }
-  }
 
   def loadLatestMetaData(source: FeedSource): Future[Option[MetaData]] = {
-    db.run(downloads
-      .filter(_.sourceId === source.id)
-      .sortBy(_.timestamp.desc)
-      .result
-      .headOption
-      .map(_.map(_.metaData)))
+    db.run {
+      downloads
+        .filter(_.sourceId === source.id)
+        .sortBy(_.timestamp.desc)
+        .result
+        .headOption
+        .map(_.map(_.metaData))
+    }
   }
 
-  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] = {
-    val insertCachedFeed = for {
-      maybeFeedId <- feeds.insert += cachedFeed.record
-      maybeArticleIds <- articles.insert ++= cachedFeed.articles.map(_.record.copy(feedId = maybeFeedId))
-    } yield {
-      (maybeFeedId, maybeArticleIds)
-    }
-
-    db.run(insertCachedFeed.transactionally) tap { eventuallyInserted =>
-      eventuallyInserted onSuccess { case (maybeFeedId, maybeArticleIds) =>
-        Logger.info(s"...> Saved Feed $maybeFeedId and ${maybeArticleIds.flatten.size}/${maybeArticleIds.size} Articles: " + cachedFeed.source.url)
+  def saveCachedFeed(cachedFeed: CachedFeed): Future[Long] = {
+    db.run {
+      (for {
+        feedId <- feeds.returningId += cachedFeed.record
+        articleIds <- articles.returningId ++= cachedFeed.articles.map(_.record.copy(feedId = Some(feedId)))
+      } yield {
+        (feedId, articleIds)
+      }).transactionally
+    } tap { eventuallyInserted =>
+      eventuallyInserted onSuccess { case (feedId, articleIds) =>
+        Logger.info(s"...> Saved Feed $feedId and ${articleIds.size} Articles: " + cachedFeed.source.url)
       }
       eventuallyInserted onFailure { case t =>
         Logger.warn("Failed to insert cached feed: " + cachedFeed.source.url +
@@ -193,6 +158,8 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
 
   def loadSources: Future[Seq[FeedSource]] = {
     val query = if (env.mode == Mode.Prod) sources else sources.take(1000)
-    db.run(query.result)
+    db.run {
+      query.result
+    }
   }
 }

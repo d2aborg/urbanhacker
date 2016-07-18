@@ -85,7 +85,7 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
   def timestamp = column[ZonedDateTime]("timestamp")
 
   override def * =
-    (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp)).shaped <>( {
+    (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp)).shaped <> ( {
       case (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp)) =>
         Feed(id, sourceId, siteUrl.map(new URI(_)), title,
           MetaData(lastModified, eTag, checksum, timestamp))
@@ -96,7 +96,18 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
 }
 
 object feeds extends TableQuery(new FeedsTable(_)) {
-  val insert = this returning feeds.map(_.id)
+  val returningId = this returning this.map(_.id.get)
+
+  val byId = this.findBy(_.id.get)
+
+  def historic(section: String, timestamp: ZonedDateTime): Query[FeedsTable, Feed, Seq] =
+    for {
+      s <- sources.bySection(section)
+      f <- feeds if f.sourceId === s.id && f.timestamp <= timestamp
+    } yield f
+
+  def byDownload(download: DownloadsTable) =
+    filter(_.sourceId === download.sourceId).filter(_.timestamp === download.timestamp)
 }
 
 case class CachedFeed(source: FeedSource, record: Feed, articles: Seq[CachedArticle]) {

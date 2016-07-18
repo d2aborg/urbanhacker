@@ -239,7 +239,7 @@ class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
   def text = column[String]("text")
 
   override def * =
-    (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text).shaped <>( {
+    (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text).shaped <> ( {
       case (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text) =>
         Article(id, sourceId, feedId, title, new URI(link), commentsLink.map(new URI(_)), pubDate, imageSource.map(new URI(_)), text)
     }, { a: Article =>
@@ -249,7 +249,19 @@ class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
 }
 
 object articles extends TableQuery(new ArticlesTable(_)) {
-  val insert = this returning articles.map(_.id)
+  val returningId = this returning this.map(_.id.get)
+
+  val byId = this.findBy(_.id.get)
+
+  def newerThan(section: String,
+                link: Rep[String],
+                pubDate: Rep[ZonedDateTime],
+                feedTimestamp: Rep[ZonedDateTime]): Query[ArticlesTable, Article, Seq] =
+    for {
+      sb <- sources.bySection(section)
+      fb <- feeds if fb.sourceId === sb.id
+      ab <- articles if ab.feedId === fb.id && ab.link === link && (ab.pubDate > pubDate || (ab.pubDate === pubDate && fb.timestamp > feedTimestamp))
+    } yield ab
 }
 
 case class CachedArticle(source: FeedSource, feed: Feed, record: Article) extends Ordered[CachedArticle] {

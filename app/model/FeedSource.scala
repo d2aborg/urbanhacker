@@ -30,5 +30,8 @@ class SourcesTable(tag: Tag) extends Table[FeedSource](tag, "sources") {
 }
 
 object sources extends TableQuery(new SourcesTable(_)) {
-  val byUrl = this.findBy(_.url)
+  val byId = this.findBy(_.id)
+
+  def bySection(section: String): Query[SourcesTable, FeedSource, Seq] =
+    filter { _.section startsWith section }
 }
