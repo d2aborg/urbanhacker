@@ -8,10 +8,11 @@ import akka.pattern.ask
 import akka.util.Timeout
 import com.google.inject.name.Named
 import model.Permalink.parseUrlTimestamp
-import model.{CachedArticle, FeedSource, Permalink}
-import play.api.{Configuration, Logger}
+import model.{FeedSource, Permalink}
+import play.api.cache.CacheApi
 import play.api.inject.ApplicationLifecycle
 import play.api.mvc._
+import play.api.{Configuration, Logger}
 import services.FeedFetcherActor.FetchFeed
 import services.FeedStore
 
@@ -27,7 +28,8 @@ class ArticlesController @Inject()(feedStore: FeedStore,
                                    configuration: Configuration,
                                    actorSystem: ActorSystem,
                                    @Named("feed-fetcher-actor") feedFetcher: ActorRef,
-                                   lifecycle: ApplicationLifecycle)
+                                   lifecycle: ApplicationLifecycle,
+                                   cache: CacheApi)
                                   (implicit exec: ExecutionContext) extends Controller {
   implicit val sections = configuration.getConfig("sections").getOrElse(Configuration.empty)
 
@@ -70,19 +72,20 @@ class ArticlesController @Inject()(feedStore: FeedStore,
 
     val requestedPermalink = parseUrlTimestamp(timestamp).map(t => Permalink(t, page))
 
-    feedStore.articlePageByFrecency(section, requestedPermalink).map { (result: Option[(Seq[CachedArticle], Permalink)]) =>
-      val (articles, resolvedPermalink) = result.fold((Seq.empty[CachedArticle], requestedPermalink.getOrElse(Permalink(parseUrlTimestamp(timestamp).getOrElse(now), 1))))(r => r)
-
-      ajax.filter(_ == "true").fold {
-        resolvedPermalink.requested.filterNot(_ == resolvedPermalink.timestamp.withZoneSameInstant(ZoneOffset.UTC)).fold {
-          Ok(views.html.articleMain(section, articles, resolvedPermalink))
-        } { _ =>
-          Redirect(routes.ArticlesController.index(section, resolvedPermalink.urlTimestamp, resolvedPermalink.page, ajax))
+    feedStore.resolvePermalink(section, requestedPermalink) flatMap { resolvedPermalink =>
+      if (!ajax.contains("true") && !resolvedPermalink.isConsistent) {
+        Future.successful(Redirect(routes.ArticlesController.index(section, resolvedPermalink.resolved.get.urlTimestamp, resolvedPermalink.resolved.get.pageNum, ajax)))
+      } else {
+        feedStore.articlePageByFrecency(section, resolvedPermalink.resolved).map { result =>
+          ajax.filter(_ == "true").fold {
+            Ok(views.html.articleMain(section, result))
+          } { _ =>
+            Ok(views.html.articlePage(section, result))
+          }
         }
-      } { _ =>
-        Ok(views.html.articlePage(section, articles, resolvedPermalink))
       }
     }
+
   }
 
 }

@@ -5,7 +5,7 @@ import play.api.libs.json.{JsValue, Json}
 import slick.driver.JdbcProfile
 import slick.profile.Capability
 
-trait MyPostgresDriver extends ExPostgresDriver
+trait SlickPgPostgresDriver extends ExPostgresDriver
   with PgArraySupport
   with PgDateSupport
   with PgDate2Support
@@ -20,9 +20,9 @@ trait MyPostgresDriver extends ExPostgresDriver
   override protected def computeCapabilities: Set[Capability] =
     super.computeCapabilities + JdbcProfile.capabilities.insertOrUpdate
 
-  override val api = MyAPI
+  override val api = SlickPgAPI
 
-  object MyAPI extends API with ArrayImplicits
+  object SlickPgAPI extends API with ArrayImplicits
     with DateTimeImplicits
     with NetImplicits
     with LTreeImplicits
@@ -39,4 +39,4 @@ trait MyPostgresDriver extends ExPostgresDriver
   }
 }
 
-object MyPostgresDriver extends MyPostgresDriver
+object SlickPgPostgresDriver extends SlickPgPostgresDriver

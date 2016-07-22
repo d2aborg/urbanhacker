@@ -2,30 +2,38 @@ package model
 
 import java.net.URI
 import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 
 import model.Utils._
 import play.api.Logger
-import services.MyPostgresDriver.api._
+import services.SlickPgPostgresDriver.api._
 import slick.lifted.Tag
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
 import scala.xml.{Node, NodeSeq}
 
-case class Feed(id: Option[Long], sourceId: Long, siteUrl: Option[URI], title: Option[String], metaData: MetaData) {
+case class Feed(id: Option[Long],
+                sourceId: Long,
+                siteUrl: Option[URI],
+                title: Option[String],
+                metaData: MetaData,
+                var frequency: Double = 0) {
   def favicon: Option[URI] = siteUrl.map(_.resolve("/favicon.ico"))
 }
 
 object Feed {
   def parse(source: FeedSource, download: XmlDownload): Option[CachedFeed] = {
     if ((download.xml \\ "channel").nonEmpty) {
-      val feed = Feed.rss(source, download, (download.xml \\ "channel") (0))
-      val articles = for (item <- download.xml \\ "item"; article <- Article.rss(source, feed, item(0)))
+      val feed = Feed.rss(source, download, (download.xml \\ "channel").head)
+      val articles = for (item <- download.xml \\ "item"; article <- Article.rss(source, feed, item.head))
         yield CachedArticle(source, feed, article)
+      feed.frequency = frequency(articles)
       Some(CachedFeed(source, feed, articles))
     } else if (download.xml.label == "feed") {
-      val feed = Feed.atom(source, download, download.xml(0))
-      val articles = for (entry <- download.xml \\ "entry"; article <- Article.atom(source, feed, entry(0)))
+      val feed = Feed.atom(source, download, download.xml.head)
+      val articles = for (entry <- download.xml \\ "entry"; article <- Article.atom(source, feed, entry.head))
         yield CachedArticle(source, feed, article)
+      feed.frequency = frequency(articles)
       Some(CachedFeed(source, feed, articles))
     } else {
       Logger.warn("Couldn't find RSS or ATOM feed in XML: " + download.xml)
@@ -63,6 +71,16 @@ object Feed {
     .replaceAll(" – Latest Articles$", "")
     .replaceAll(" — Medium$", "")
     .replaceAll(": The Full Feed$", "")
+
+  def frequency(articles: Seq[CachedArticle]): Double = {
+    val mostRecent = articles take 10
+    val periods = mostRecent.map(_.record.pubDate).sortBy(_.toInstant.toEpochMilli).sliding(2).toSeq
+    val periodLengths = periods.map(range => ChronoUnit.SECONDS.between(range.head, range.last))
+    val weights = (1 to periodLengths.size).map(1.0 / _)
+    val weightedPeriods = for ((period, weight) <- periodLengths.zip(weights)) yield period * weight
+    val weightedAveragePeriod = weightedPeriods.sum / weights.sum
+    1.0 / weightedAveragePeriod
+  }
 }
 
 class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
@@ -84,14 +102,15 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
 
   def timestamp = column[ZonedDateTime]("timestamp")
 
+  def frequency = column[Double]("frequency")
+
   override def * =
-    (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp)).shaped <> ( {
-      case (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp)) =>
-        Feed(id, sourceId, siteUrl.map(new URI(_)), title,
-          MetaData(lastModified, eTag, checksum, timestamp))
+    (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency).shaped <> ( {
+      case (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency) =>
+        Feed(id, sourceId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency)
     }, { f: Feed =>
-      Some((f.id, f.sourceId, f.siteUrl.map(_.toString), f.title,
-        (f.metaData.lastModified, f.metaData.eTag, f.metaData.checksum, f.metaData.timestamp)))
+      Some((f.id, f.sourceId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
+        f.metaData.checksum, f.metaData.timestamp), f.frequency))
     })
 }
 

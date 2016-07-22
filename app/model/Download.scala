@@ -2,7 +2,7 @@ package model
 
 import java.time.ZonedDateTime
 
-import services.MyPostgresDriver.api._
+import services.SlickPgPostgresDriver.api._
 import slick.lifted.Tag
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 

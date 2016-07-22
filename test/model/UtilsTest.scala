@@ -10,7 +10,7 @@ class UtilsTest extends FlatSpec with Matchers {
   }
 
   "Permalink.urlTimestamp" should "format URL date time" in {
-    Permalink(ZonedDateTime.parse("2016-07-05T20:16:49.882Z"), 1, None).urlTimestamp shouldBe "20160705T201649.882Z"
+    Permalink(ZonedDateTime.parse("2016-07-05T20:16:49.882Z"), 1).urlTimestamp shouldBe "20160705T201649.882Z"
   }
 
   "Utils.parseInternetDateTime" should "parse incorrect weekdays" in  {

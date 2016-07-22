@@ -1,25 +1,19 @@
 package services
 
-import java.sql.Timestamp
-import java.time.temporal.ChronoUnit
-import java.time.{Duration, OffsetDateTime, ZonedDateTime}
+import java.time.{Duration, ZonedDateTime}
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import model.Utils._
 import model._
 import play.api.db.slick.DatabaseConfigProvider
 import play.api.{Environment, Logger, Mode}
-import play.libs.Scala
-import services.MyPostgresDriver.api._
-import slick.dbio.DBIOAction
+import services.SlickPgPostgresDriver.api._
 import slick.dbio.Effect.Read
 import slick.driver.JdbcProfile
-import slick.lifted.AppliedCompiledFunction
-import slick.profile.{FixedSqlAction, FixedSqlStreamingAction, SqlStreamingAction}
 
-import scala.collection.SortedSet
 import scala.concurrent.{ExecutionContext, Future}
 
+@Singleton
 class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environment)(implicit exec: ExecutionContext) {
   val dbConfig = dbConfigProvider.get[JdbcProfile]
   val db = dbConfig.db
@@ -27,75 +21,77 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   Logger.info("Schemas:\n" +
     (downloads.schema ++ sources.schema ++ feeds.schema ++ articles.schema).create.statements.mkString("\n"))
 
-  def articlePageByFrecency(section: String, permalink: Option[Permalink])
-                           (implicit now: ZonedDateTime): Future[Option[(Seq[CachedArticle], Permalink)]] = {
-    val pageNum = permalink.map(_.page) getOrElse 1
-    val timestamp = permalink.map(_.timestamp) getOrElse now
-
-    articlesByFrecency(section, timestamp, pageNum, Permalink.pageSize).map {
-      _.map {
-        case (articlePage, latestTimestamp, hasMore) =>
-          val nextPage = Some(pageNum + 1).filter(_ => hasMore)
-
-          val resolvedPermalink = Permalink(latestTimestamp, pageNum, nextPage, permalink.map(_.timestamp))
-
-          (articlePage, resolvedPermalink)
-      }
-    }
-  }
-
-  val extractEpoch = SimpleExpression.unary[ZonedDateTime, Long] { (zdt, qb) =>
+  val extractEpoch = SimpleExpression.unary[Duration, Long] { (zdt, qb) =>
     qb.sqlBuilder += "EXTRACT(EPOCH FROM "
     qb.expr(zdt)
     qb.sqlBuilder += ")"
   }
 
-  def articlesByFrecency(section: String, timestamp: ZonedDateTime, pageNum: Int, pageSize: Int): Future[Option[(Seq[CachedArticle], ZonedDateTime, Boolean)]] = {
+  val div = SimpleExpression.binary[Long, Long, Long] { (num, den, qb) =>
+    qb.sqlBuilder += "("
+    qb.expr(num)
+    qb.sqlBuilder += "/"
+    qb.expr(den)
+    qb.sqlBuilder += ")"
+  }
+
+  val pow = SimpleFunction.binary[Double, Double, Double]("POWER")
+
+  def resolvePermalink(section: String, permalink: Option[Permalink])(implicit now: ZonedDateTime): Future[ResolvedPermalink] = {
+    val pageNum = permalink.map(_.pageNum) getOrElse 1
+    val timestamp = permalink.map(_.timestamp) getOrElse now
+
     db.run {
-      feeds.historic(section, timestamp).map(_.timestamp).max.result.flatMap { historicTimestamp =>
-        DBIOA.sequence {
-          historicTimestamp.map { historicTimestamp =>
-            val articlesWithSourceAndFeed = for {
-              s <- sources.bySection(section)
-              f <- feeds if f.sourceId === s.id && f.timestamp <= timestamp
-              a <- articles.sortBy(_.pubDate.desc) if a.feedId === f.id && !articles.newerThan(section, historicTimestamp, a.link, a.pubDate, f.timestamp).exists
-            } yield (s, f, a)
-
-            val offset = (pageNum - 1) * pageSize
-            val limit = pageSize + 1 // one extra for next page detection
-            val articlePage = articlesWithSourceAndFeed.drop(offset).take(limit)
-
-            articlePage.result.map {
-              _.map(CachedArticle.tupled(_))
-            }.map { as =>
-              (as.take(pageSize), historicTimestamp, as.size > pageSize)
-            }
-          }
-        }
+      feeds.historic(section, timestamp).map(_.timestamp).max.result map { (historicTimestamp: Option[ZonedDateTime]) =>
+        ResolvedPermalink(historicTimestamp.map(Permalink(_, pageNum)), permalink)
       }
     }
   }
 
-  def byFrecency(articles: SortedSet[CachedArticle], timestamp: OffsetDateTime): Seq[(Double, CachedArticle)] = {
-    val groupFrequency = frequency(articles, timestamp)
-    articles.toSeq.map(article => (frecency(article.record, groupFrequency, timestamp), article))
-  }
+  def articlePageByFrecency(section: String, permalink: Option[Permalink])
+                           (implicit now: ZonedDateTime): Future[ArticlesResult] =
+    db.run {
+      val pageNum = permalink.map(_.pageNum) getOrElse 1
+      val timestamp = permalink.map(_.timestamp) getOrElse now
+      val pageSize = Permalink.pageSize
 
-  def frecency(article: Article, frequency: Double, timestamp: OffsetDateTime): Double =
-    Math.pow(age(article, timestamp), 4) * frequency
+      feeds.historic(section, timestamp).map(_.timestamp).max.result.flatMap {
+        _.fold {
+          DBIO.successful[ArticlesResult](ArticlesResult(Seq.empty, ResolvedPermalink(None, permalink), None)): DBIOAction[ArticlesResult, NoStream, Read]
+        } { historicTimestamp =>
+          val articlesWithSourceAndFeed = for {
+            s <- sources.bySection(section)
+            f <- feeds if f.sourceId === s.id && f.timestamp <= historicTimestamp
+            a <- articles if a.feedId === f.id && !articles.newerThan(section, historicTimestamp, a.link, a.pubDate, f.timestamp).exists
+          } yield (s, f, a)
 
-  def age(article: Article, timestamp: OffsetDateTime): Long =
-    ChronoUnit.SECONDS.between(article.pubDate, timestamp)
+          val offset = (pageNum - 1) * pageSize
+          val limit = pageSize + 1 // one extra for next page detection
 
-  def frequency(articles: SortedSet[CachedArticle], timestamp: OffsetDateTime): Double = {
-    val mostRecent = articles take 10
-    val ranges = (timestamp +: mostRecent.map(_.record.pubDate).toSeq).sliding(2)
-    val periods = ranges.map(range => ChronoUnit.SECONDS.between(range.last, range.head))
-    val weights = (1 to mostRecent.size).map(1.0 / _)
-    val weightedPeriods = for ((period, weight) <- periods.zip(weights.iterator)) yield period * weight
-    val weightedAveragePeriod = weightedPeriods.sum / weights.sum
-    1.0 / weightedAveragePeriod
-  }
+          val articlePage = articlesWithSourceAndFeed sortBy { case (s, f, a) =>
+            val ageMillis = extractEpoch(historicTimestamp.bind - a.pubDate)
+            val ageSeconds = ageMillis.asColumnOf[Double] / 1000.0
+            val frequency = f.frequency
+            pow(ageSeconds, 4.0.bind) * frequency
+          } drop offset take limit
+
+          articlePage.result.tap { r =>
+            Logger.info("Read articles query:\n" + r.statements.mkString("\n"))
+          }.map {
+            _.map(CachedArticle.tupled)
+          }.map { as =>
+            val articlePage = as.take(pageSize)
+            val hasMore = as.size > pageSize
+
+            val nextPage = Some(pageNum + 1).filter(_ => hasMore)
+
+            val resolvedPermalink = ResolvedPermalink(Some(Permalink(historicTimestamp, pageNum)), permalink)
+
+            ArticlesResult(articlePage, resolvedPermalink, nextPage)
+          }
+        }
+      }
+    }
 
   def loadUnparsedDownload(downloadId: Long): Future[Option[Download]] =
     db.run {

@@ -14,7 +14,7 @@ import com.optimaize.langdetect.{LanguageDetector, LanguageDetectorBuilder}
 import model.Utils._
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
-import services.MyPostgresDriver.api._
+import services.SlickPgPostgresDriver.api._
 import slick.lifted.{TableQuery, Tag}
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 

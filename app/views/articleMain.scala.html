@@ -1,13 +1,13 @@
 @import java.time.ZonedDateTime
-@import model.CachedArticle
-@import model.Permalink
+@import model.ArticlesResult
 @import play.api.Configuration
 
-@(section: String, articles: Seq[CachedArticle], permalink: Permalink)(implicit feedSections: Configuration, now: ZonedDateTime, request: Request[AnyContent])
+@(section: String, result: ArticlesResult)(implicit feedSections: Configuration, now: ZonedDateTime, request: Request[AnyContent])
 
 @defining(feedSections.getString(section).get +
-          permalink.requested.fold("") { _ =>
-            " · " + permalink.viewTimestamp + Some(permalink.page).filter(_ > 1).fold("") { " · Page " + _ }
+          result.permalink.requested.fold("") { _ =>
+            " · " + result.permalink.resolved.get.viewTimestamp +
+                    Some(result.permalink.resolved.get.pageNum).filter(_ > 1).fold("") { " · Page " + _ }
           }) { title =>
     @template(section, title) {
         <header>
@@ -16,7 +16,7 @@
 
         <p class="text-muted">
             <small>
-                @permalink.requested.fold {
+                @result.permalink.requested.fold {
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
                         <a href='@routes.ArticlesController.index(section, "", 1, None)'>Reload</a>
@@ -25,7 +25,7 @@
                     <span class="text-muted">·</span>
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
-                        <a href="@routes.ArticlesController.index(section, permalink.urlTimestamp, permalink.page, None)">Permalink &raquo;</a>
+                        <a href="@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, result.permalink.resolved.get.pageNum, None)">Permalink &raquo;</a>
                     </span>
                 } { _ =>
                     <span class="text-nowrap">
@@ -36,22 +36,22 @@
                     <span class="text-muted">·</span>
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
-                        <a href='@routes.ArticlesController.index(section, permalink.urlTimestamp, 1, None)'>
-                            <span class="permalink-timestamp" datetime="@permalink.timestamp">@permalink.viewTimestamp</span>
+                        <a href='@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, 1, None)'>
+                            <span class="permalink-timestamp" datetime="@result.permalink.resolved.get.timestamp">@result.permalink.resolved.get.viewTimestamp</span>
                         </a>
                     </span>
 
                     <span class="text-muted">·</span>
                     <span class="text-nowrap">
                         @defining(Html("&laquo;")) { linkText =>
-                            @permalink.prevPage.fold(linkText) { prevPage =>
-                                <a href='@routes.ArticlesController.index(section, permalink.urlTimestamp, prevPage, None)'>@linkText</a>
+                            @result.permalink.resolved.get.prevPage.fold(linkText) { prevPage =>
+                                <a href='@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, prevPage, None)'>@linkText</a>
                             }
                         }
-                        Page <span class="permalink-page">@permalink.page</span>
+                        Page <span class="permalink-page">@result.permalink.resolved.get.pageNum</span>
                         @defining(Html("&raquo;")) { linkText =>
-                            @permalink.nextPage.fold(linkText) { nextPage =>
-                                <a href='@routes.ArticlesController.index(section, permalink.urlTimestamp, nextPage, None)'>@linkText</a>
+                            @result.nextPage.fold(linkText) { nextPage =>
+                                <a href='@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, nextPage, None)'>@linkText</a>
                             }
                         }
                     </span>
@@ -59,7 +59,7 @@
             </small>
         </p>
 
-        @articlePage(section, articles, permalink)
+        @articlePage(section, result)
     } {
         <script type="text/javascript">
             function loadMore() {
