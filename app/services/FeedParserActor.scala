@@ -25,6 +25,7 @@ class FeedParserActor @Inject()(feedStore: FeedStore)(implicit exec: ExecutionCo
       sender() ! Await.result(parseSave(source, downloadId).recover {
         case t =>
           Logger.warn("Failed to parse: " + source.url, t)
+          feedStore.deleteUnparsedDownload(source, downloadId)
           None
       }, 20.seconds)
   }

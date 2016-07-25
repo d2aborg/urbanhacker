@@ -127,7 +127,7 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
 object feeds extends TableQuery(new FeedsTable(_)) {
   val returningId = this returning this.map(_.id.get)
 
-  val byId = this.findBy(_.id.get)
+  val byId = this.findBy(_.id)
 
   def historic(section: String, timestamp: ZonedDateTime): Query[FeedsTable, Feed, Seq] =
     for {

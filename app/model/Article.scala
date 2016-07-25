@@ -251,7 +251,7 @@ class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
 object articles extends TableQuery(new ArticlesTable(_)) {
   val returningId = this returning this.map(_.id.get)
 
-  val byId = this.findBy(_.id.get)
+  val byId = this.findBy(_.id)
 
   def newerThan(section: String,
                 historicTimestamp: ZonedDateTime,

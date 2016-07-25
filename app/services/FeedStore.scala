@@ -15,8 +15,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 @Singleton
 class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environment)(implicit exec: ExecutionContext) {
-  val dbConfig = dbConfigProvider.get[JdbcProfile]
-  val db = dbConfig.db
+  val db = dbConfigProvider.get[JdbcProfile].db
 
   Logger.info("Schemas:\n" +
     (downloads.schema ++ sources.schema ++ feeds.schema ++ articles.schema).create.statements.mkString("\n"))
@@ -111,7 +110,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       downloads.returningId += download
     } tap { eventualId =>
       for (id <- eventualId)
-        Logger.info("...> Saved Download " + id + ": " + source.url)
+        Logger.info(s"...> Saved Download $id: ${source.url}")
     }
 
   def loadLatestMetaData(source: FeedSource): Future[Option[MetaData]] =
@@ -140,8 +139,9 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
                 .filterNot(a => existingArticlesByText.contains((a.title, a.text, a.pubDate)))
 
               if (textPrunedArticles isEmpty) {
-                downloads.byId(downloadId).delete map { deletedDownloadId =>
-                  Logger.info(s"...> Deleted download $deletedDownloadId with no new articles" + cachedFeed.source.url)
+                downloads.byId(Some(downloadId)).delete map { numDeleted =>
+                  if (numDeleted > 0)
+                    Logger.info(s"...> Deleted download $downloadId with no new articles: ${cachedFeed.source.url}")
                   None
                 }
               } else {
@@ -152,13 +152,20 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
                   (feedId, articleIds)
                 }
                 savedIds map { case (feedId, articleIds) =>
-                  Logger.info(s"...> Saved Feed $feedId and ${articleIds.size} Articles: " + cachedFeed.source.url)
+                  Logger.info(s"...> Saved Feed $feedId and ${articleIds.size} Articles: ${cachedFeed.source.url}")
                   Some(feedId)
                 }
               }
             }
         } transactionally
     }
+
+  def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
+    downloads.byId(Some(downloadId)).delete map { numDeleted =>
+      if (numDeleted > 0) Logger.info(s"...> Deleted unparseable download $downloadId: ${source.url}")
+      numDeleted > 0
+    }
+  }
 
   def loadSources: Future[Seq[FeedSource]] =
     db.run {
