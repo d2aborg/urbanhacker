@@ -114,20 +114,20 @@ object Utils {
       maybeURI.toOption
     }
 
-  class Tappable[A](a: A) {
+  class Tappable[A](x: A) {
     def tap[U](action: (A) => U): A = {
-      action(a)
-      a
+      action(x)
+      x
     }
   }
 
-  implicit def any2Tappable[A](a: A): Tappable[A] = new Tappable[A](a)
+  implicit def any2Tappable[A](x: A): Tappable[A] = new Tappable[A](x)
 
-  class OptionFuture[A](of: Option[Future[A]]) {
-    def sequence(implicit ec: ExecutionContext): Future[Option[A]] = Futures.sequence(of)
+  class NonUTCZonedDateTime(dt: ZonedDateTime) {
+    def UTC: ZonedDateTime = dt.withZoneSameInstant(ZoneOffset.UTC)
   }
 
-  implicit def optionFuture[A](of: Option[Future[A]]): OptionFuture[A] = new OptionFuture[A](of)
+  implicit def zdt2nonUTCZdt(dt: ZonedDateTime): NonUTCZonedDateTime = new NonUTCZonedDateTime(dt)
 }
 
 object Futures {

@@ -1,5 +1,7 @@
 package model
 
+import com.markatta.timeforscala._
+
 import java.net.URI
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
@@ -23,22 +25,30 @@ case class Feed(id: Option[Long],
 
 object Feed {
   def parse(source: FeedSource, download: XmlDownload): Option[CachedFeed] = {
-    if ((download.xml \\ "channel").nonEmpty) {
+    val maybeParsed: Option[(Feed, Seq[Option[Article]])] = if ((download.xml \\ "channel").nonEmpty) {
       val feed = Feed.rss(source, download, (download.xml \\ "channel").head)
-      val articles = for (item <- download.xml \\ "item"; article <- Article.rss(source, feed, item.head))
-        yield CachedArticle(source, feed, article)
-      feed.frequency = frequency(articles)
-      Some(CachedFeed(source, feed, articles))
+      val articles = for (item <- download.xml \\ "item") yield Article.rss(source, feed, item.head)
+      Some((feed, articles))
     } else if (download.xml.label == "feed") {
       val feed = Feed.atom(source, download, download.xml.head)
-      val articles = for (entry <- download.xml \\ "entry"; article <- Article.atom(source, feed, entry.head))
-        yield CachedArticle(source, feed, article)
-      feed.frequency = frequency(articles)
-      Some(CachedFeed(source, feed, articles))
+      val articles = for (entry <- download.xml \\ "entry") yield Article.atom(source, feed, entry.head)
+      Some((feed, articles))
     } else {
       Logger.warn("Couldn't find RSS or ATOM feed in XML: " + download.xml)
       None
     }
+
+    maybeParsed.map { case (feed, maybeArticles) =>
+      val articles = pruneDuplicateArticles(maybeArticles.flatten).map(CachedArticle(source, feed, _))
+      feed.frequency = frequency(articles)
+      CachedFeed(source, feed, articles)
+    }
+  }
+
+  def pruneDuplicateArticles(articles: Seq[Article]): Seq[Article] = {
+    articles
+      .groupBy(_.link).values.map(_.maxBy(_.pubDate)).toSeq
+      .groupBy(a => (a.title, a.text)).values.map(_.maxBy(_.pubDate)).toSeq
   }
 
   def rss(source: FeedSource, download: XmlDownload, channel: Node): Feed = {

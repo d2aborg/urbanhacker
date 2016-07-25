@@ -69,13 +69,15 @@
 </div>
 
 @result.nextPage.map { nextPage =>
-    <div class="load-more row">
-        <div class="col-md-12">
-            <footer>
-                <h3>
-                    <a href="@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, nextPage, None)" onclick="loadMore(); return false">Load More &hellip;</a>
-                </h3>
-            </footer>
+    @result.permalink.map { permalink =>
+        <div class="load-more row">
+            <div class="col-md-12">
+                <footer>
+                    <h3>
+                        <a href="@routes.ArticlesController.index(section, permalink.urlTimestamp, nextPage, None)" onclick="loadMore(); return false">Load More &hellip;</a>
+                    </h3>
+                </footer>
+            </div>
         </div>
-    </div>
+    }
 }

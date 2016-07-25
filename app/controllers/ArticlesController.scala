@@ -67,25 +67,25 @@ class ArticlesController @Inject()(feedStore: FeedStore,
     (feedFetcher ? FetchFeed(source)).mapTo[Seq[Option[Long]]]
   }
 
-  def index(section: String, timestamp: String = "", page: Int = 1, ajax: Option[String]) = Action.async { implicit request =>
+  def index(section: String, timestamp: String = "", pageNum: Int = 1, ajax: Option[String] = None) = Action.async { implicit request =>
     implicit val now = ZonedDateTime.now(ZoneOffset.UTC)
 
-    val requestedPermalink = parseUrlTimestamp(timestamp).map(t => Permalink(t, page))
+    val requestedPermalink = parseUrlTimestamp(timestamp).map(ts => Permalink(ts, pageNum))
 
-    feedStore.resolvePermalink(section, requestedPermalink) flatMap { resolvedPermalink =>
-      if (!ajax.contains("true") && !resolvedPermalink.isConsistent) {
-        Future.successful(Redirect(routes.ArticlesController.index(section, resolvedPermalink.resolved.get.urlTimestamp, resolvedPermalink.resolved.get.pageNum, ajax)))
-      } else {
-        feedStore.articlePageByFrecency(section, resolvedPermalink.resolved).map { result =>
+    val eventualMaybeResolvedPermalink = ajax.filter(_ == "true").fold(feedStore.resolvePermalink(section, requestedPermalink))(_ => Future.successful(None))
+    eventualMaybeResolvedPermalink.flatMap { maybeResolvedPermalink =>
+      maybeResolvedPermalink.fold {
+        feedStore.articlePageByFrecency(section, requestedPermalink).map { result =>
           ajax.filter(_ == "true").fold {
             Ok(views.html.articleMain(section, result))
           } { _ =>
             Ok(views.html.articlePage(section, result))
           }
         }
+      } { resolvedPermalink =>
+        Future.successful(Redirect(routes.ArticlesController.index(section, resolvedPermalink.urlTimestamp, resolvedPermalink.pageNum, ajax)))
       }
     }
-
   }
 
 }

@@ -74,7 +74,7 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
   def downloadSaveNew(source: FeedSource)(previous: Option[MetaData]): Future[Option[Long]] =
     for {
       maybeDownloaded <- download(source, previous)
-      maybeSaved <- maybeDownloaded.map(feedStore.saveDownload(source)).sequence
+      maybeSaved <- Futures.traverse(maybeDownloaded)(feedStore.saveDownload(source))
     } yield maybeSaved
 
   def download(source: FeedSource, previous: Option[MetaData]): Future[Option[Download]] = {

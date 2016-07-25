@@ -1,12 +1,12 @@
 package services
 
-import java.time.{Duration, ZonedDateTime}
+import java.time.{Duration, ZoneOffset, ZonedDateTime}
 
 import com.google.inject.{Inject, Singleton}
 import model.Utils._
 import model._
 import play.api.db.slick.DatabaseConfigProvider
-import play.api.{Environment, Logger, Mode}
+import play.api.{Environment, Logger}
 import services.SlickPgPostgresDriver.api._
 import slick.dbio.Effect.Read
 import slick.driver.JdbcProfile
@@ -37,39 +37,35 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
 
   val pow = SimpleFunction.binary[Double, Double, Double]("POWER")
 
-  def resolvePermalink(section: String, permalink: Option[Permalink])(implicit now: ZonedDateTime): Future[ResolvedPermalink] = {
-    val pageNum = permalink.map(_.pageNum) getOrElse 1
-    val timestamp = permalink.map(_.timestamp) getOrElse now
-
-    db.run {
-      feeds.historic(section, timestamp).map(_.timestamp).max.result map { (historicTimestamp: Option[ZonedDateTime]) =>
-        ResolvedPermalink(historicTimestamp.map(Permalink(_, pageNum)), permalink)
+  def resolvePermalink(section: String, permalink: Option[Permalink]): Future[Option[Permalink]] = {
+    Futures.traverse(permalink) { permalink =>
+      db.run {
+        feeds.historic(section, permalink.timestamp).map(_.timestamp).max.result map { resolvedTimestamp =>
+          resolvedTimestamp.filterNot(_.UTC == permalink.timestamp.UTC).map(ts => Permalink(ts, permalink.pageNum))
+        }
       }
-    }
+    } map (_.flatten)
   }
 
   def articlePageByFrecency(section: String, permalink: Option[Permalink])
                            (implicit now: ZonedDateTime): Future[ArticlesResult] =
     db.run {
-      val pageNum = permalink.map(_.pageNum) getOrElse 1
-      val timestamp = permalink.map(_.timestamp) getOrElse now
-      val pageSize = Permalink.pageSize
-
-      feeds.historic(section, timestamp).map(_.timestamp).max.result.flatMap {
+      val searchPermalink = permalink getOrElse Permalink(now, 1)
+      feeds.historic(section, searchPermalink.timestamp).map(_.timestamp).max.result.flatMap {
         _.fold {
-          DBIO.successful[ArticlesResult](ArticlesResult(Seq.empty, ResolvedPermalink(None, permalink), None)): DBIOAction[ArticlesResult, NoStream, Read]
-        } { historicTimestamp =>
+          DBIO.successful(ArticlesResult(Seq.empty, None, permalink, None)): DBIOAction[ArticlesResult, NoStream, Read]
+        } { resolvedTimestamp =>
           val articlesWithSourceAndFeed = for {
             s <- sources.bySection(section)
-            f <- feeds if f.sourceId === s.id && f.timestamp <= historicTimestamp
-            a <- articles if a.feedId === f.id && !articles.newerThan(section, historicTimestamp, a.link, a.pubDate, f.timestamp).exists
+            f <- feeds if f.sourceId === s.id && f.timestamp <= resolvedTimestamp
+            a <- articles if a.feedId === f.id && !articles.newerThan(section, resolvedTimestamp, a.link, a.pubDate, f.timestamp).exists
           } yield (s, f, a)
 
-          val offset = (pageNum - 1) * pageSize
-          val limit = pageSize + 1 // one extra for next page detection
+          val offset = (searchPermalink.pageNum - 1) * searchPermalink.pageSize
+          val limit = searchPermalink.pageSize + 1 // one extra for next page detection
 
           val articlePage = articlesWithSourceAndFeed sortBy { case (s, f, a) =>
-            val ageMillis = extractEpoch(historicTimestamp.bind - a.pubDate)
+            val ageMillis = extractEpoch(resolvedTimestamp.bind - a.pubDate)
             val ageSeconds = ageMillis.asColumnOf[Double] / 1000.0
             val frequency = f.frequency
             pow(ageSeconds, 4.0.bind) * frequency
@@ -80,14 +76,11 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
           }.map {
             _.map(CachedArticle.tupled)
           }.map { as =>
-            val articlePage = as.take(pageSize)
-            val hasMore = as.size > pageSize
+            val articlePage = as.take(searchPermalink.pageSize)
+            val resolvedPermalink = Permalink(resolvedTimestamp, searchPermalink.pageNum)
+            val nextPage = Some(searchPermalink.pageNum + 1).filter(_ => as.size > searchPermalink.pageSize)
 
-            val nextPage = Some(pageNum + 1).filter(_ => hasMore)
-
-            val resolvedPermalink = ResolvedPermalink(Some(Permalink(historicTimestamp, pageNum)), permalink)
-
-            ArticlesResult(articlePage, resolvedPermalink, nextPage)
+            ArticlesResult(articlePage, Some(resolvedPermalink), permalink, nextPage)
           }
         }
       }
@@ -101,7 +94,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         .result.headOption
     }
 
-  def loadUnparsedDownloadIds(source: FeedSource): Future[Seq[Long]] = {
+  def loadUnparsedDownloadIds(source: FeedSource): Future[Seq[Long]] =
     db.run {
       downloads
         .filter(_.sourceId === source.id)
@@ -112,7 +105,6 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       for (ids <- eventualIds if ids.nonEmpty)
         Logger.info(s"'''> Loaded Ids of ${ids.size} Unparsed Downloads: ${source.url}")
     }
-  }
 
   def saveDownload(source: FeedSource)(download: Download): Future[Long] =
     db.run {
@@ -122,7 +114,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         Logger.info("...> Saved Download " + id + ": " + source.url)
     }
 
-  def loadLatestMetaData(source: FeedSource): Future[Option[MetaData]] = {
+  def loadLatestMetaData(source: FeedSource): Future[Option[MetaData]] =
     db.run {
       downloads
         .filter(_.sourceId === source.id)
@@ -131,31 +123,45 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         .headOption
         .map(_.map(_.metaData))
     }
-  }
 
-  def saveCachedFeed(cachedFeed: CachedFeed): Future[Long] = {
+  def saveCachedFeed(downloadId: Long)(cachedFeed: CachedFeed): Future[Option[Long]] =
     db.run {
-      (for {
-        feedId <- feeds.returningId += cachedFeed.record
-        articleIds <- articles.returningId ++= cachedFeed.articles.map(_.record.copy(feedId = Some(feedId)))
-      } yield {
-        (feedId, articleIds)
-      }).transactionally
-    } tap { eventuallyInserted =>
-      eventuallyInserted onSuccess { case (feedId, articleIds) =>
-        Logger.info(s"...> Saved Feed $feedId and ${articleIds.size} Articles: " + cachedFeed.source.url)
-      }
-      eventuallyInserted onFailure { case t =>
-        Logger.warn("Failed to insert cached feed: " + cachedFeed.source.url +
-          " at " + cachedFeed.record.metaData.timestamp, t)
-      }
-    } map (_._1)
-  }
+      val proposedArticles = cachedFeed.articles.map(_.record)
+      articles.filter(_.link inSet proposedArticles.map(_.link.toString)).result
+        .map(_.map(a => (a.link.toString, a.pubDate.withZoneSameInstant(ZoneOffset.UTC))))
+        .flatMap { existingArticlesByLink =>
+          val linkPrunedArticles = proposedArticles
+            .filterNot(a => existingArticlesByLink.contains((a.link.toString, a.pubDate)))
 
-  def loadSources: Future[Seq[FeedSource]] = {
-    val query = if (env.mode == Mode.Prod) sources else sources.take(1000)
-    db.run {
-      query.result
+          articles.filter(a => linkPrunedArticles.map(b => a.title === b.title && a.text === b.text && a.pubDate === b.pubDate).foldLeft(false.bind)(_ || _)).result
+            .map(_.map(a => (a.title, a.text, a.pubDate.withZoneSameInstant(ZoneOffset.UTC))))
+            .flatMap { existingArticlesByText =>
+              val textPrunedArticles = linkPrunedArticles
+                .filterNot(a => existingArticlesByText.contains((a.title, a.text, a.pubDate)))
+
+              if (textPrunedArticles isEmpty) {
+                downloads.byId(downloadId).delete map { deletedDownloadId =>
+                  Logger.info(s"...> Deleted download $deletedDownloadId with no new articles" + cachedFeed.source.url)
+                  None
+                }
+              } else {
+                val savedIds = for {
+                  feedId <- feeds.returningId += cachedFeed.record
+                  articleIds <- articles.returningId ++= textPrunedArticles.map(_.copy(feedId = Some(feedId)))
+                } yield {
+                  (feedId, articleIds)
+                }
+                savedIds map { case (feedId, articleIds) =>
+                  Logger.info(s"...> Saved Feed $feedId and ${articleIds.size} Articles: " + cachedFeed.source.url)
+                  Some(feedId)
+                }
+              }
+            }
+        } transactionally
     }
-  }
+
+  def loadSources: Future[Seq[FeedSource]] =
+    db.run {
+      sources.result
+    }
 }

@@ -4,11 +4,13 @@
 
 @(section: String, result: ArticlesResult)(implicit feedSections: Configuration, now: ZonedDateTime, request: Request[AnyContent])
 
-@defining(feedSections.getString(section).get +
-          result.permalink.requested.fold("") { _ =>
-            " · " + result.permalink.resolved.get.viewTimestamp +
-                    Some(result.permalink.resolved.get.pageNum).filter(_ > 1).fold("") { " · Page " + _ }
-          }) { title =>
+@defining(s"${feedSections.getString(section).get}${
+    result.requested.fold("") { requested =>
+        s" · ${requested.viewTimestamp}${
+            if(requested.pageNum > 1) s" · Page ${requested.pageNum}" else ""
+        }"
+    }
+}") { title =>
     @template(section, title) {
         <header>
             <h1><span class="urban">@feedSections.getString(section).get</span></h1>
@@ -16,18 +18,20 @@
 
         <p class="text-muted">
             <small>
-                @result.permalink.requested.fold {
+                @result.requested.fold {
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
                         <a href='@routes.ArticlesController.index(section, "", 1, None)'>Reload</a>
                     </span>
 
-                    <span class="text-muted">·</span>
-                    <span class="text-nowrap">
-                        <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
-                        <a href="@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, result.permalink.resolved.get.pageNum, None)">Permalink &raquo;</a>
-                    </span>
-                } { _ =>
+                    @result.permalink.map { permalink =>
+                        <span class="text-muted">·</span>
+                        <span class="text-nowrap">
+                            <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
+                            <a href="@routes.ArticlesController.index(section, permalink.urlTimestamp, permalink.pageNum, None)">Permalink &raquo;</a>
+                        </span>
+                    }
+                } { requested =>
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
                         <a href='@routes.ArticlesController.index(section, "", 1, None)'>Back to Latest</a>
@@ -36,22 +40,22 @@
                     <span class="text-muted">·</span>
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
-                        <a href='@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, 1, None)'>
-                            <span class="permalink-timestamp" datetime="@result.permalink.resolved.get.timestamp">@result.permalink.resolved.get.viewTimestamp</span>
+                        <a href='@routes.ArticlesController.index(section, requested.urlTimestamp, 1, None)'>
+                            <span class="permalink-timestamp" datetime="@requested.timestamp">@requested.viewTimestamp</span>
                         </a>
                     </span>
 
                     <span class="text-muted">·</span>
                     <span class="text-nowrap">
                         @defining(Html("&laquo;")) { linkText =>
-                            @result.permalink.resolved.get.prevPage.fold(linkText) { prevPage =>
-                                <a href='@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, prevPage, None)'>@linkText</a>
+                            @requested.prevPage.fold(linkText) { prevPage =>
+                                <a href='@routes.ArticlesController.index(section, requested.urlTimestamp, prevPage, None)'>@linkText</a>
                             }
                         }
-                        Page <span class="permalink-page">@result.permalink.resolved.get.pageNum</span>
+                        Page <span class="permalink-page">@requested.pageNum</span>
                         @defining(Html("&raquo;")) { linkText =>
                             @result.nextPage.fold(linkText) { nextPage =>
-                                <a href='@routes.ArticlesController.index(section, result.permalink.resolved.get.urlTimestamp, nextPage, None)'>@linkText</a>
+                                <a href='@routes.ArticlesController.index(section, requested.urlTimestamp, nextPage, None)'>@linkText</a>
                             }
                         }
                     </span>

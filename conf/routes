@@ -2,12 +2,12 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 
-GET     /                                                                   controllers.ArticlesController.index(section = "news", timestamp = "", page: Int = 1, ajax: Option[String])
-GET     /$section<blogs>                                                    controllers.ArticlesController.index(section, timestamp = "", page: Int = 1, ajax: Option[String])
-GET     /t/$timestamp<\d{8}T\d{6}.\d{3}Z>                                   controllers.ArticlesController.index(section = "news", timestamp, page: Int = 1, ajax: Option[String])
-GET     /$section<blogs>/t/$timestamp<\d{8}T\d{6}.\d{3}Z>                   controllers.ArticlesController.index(section, timestamp, page: Int = 1, ajax: Option[String])
-GET     /t/$timestamp<\d{8}T\d{6}.\d{3}Z>/p/$page<\d+>                      controllers.ArticlesController.index(section = "news", timestamp, page: Int, ajax: Option[String])
-GET     /$section<blogs>/t/$timestamp<\d{8}T\d{6}.\d{3}Z>/p/$page<\d+>      controllers.ArticlesController.index(section, timestamp, page: Int, ajax: Option[String])
+GET     /                                                                   controllers.ArticlesController.index(section = "news", timestamp = "", pageNum: Int = 1, ajax: Option[String])
+GET     /$section<blogs>                                                    controllers.ArticlesController.index(section, timestamp = "", pageNum: Int = 1, ajax: Option[String])
+GET     /t/$timestamp<\d{8}T\d{6}.\d{3}Z>                                   controllers.ArticlesController.index(section = "news", timestamp, pageNum: Int = 1, ajax: Option[String])
+GET     /$section<blogs>/t/$timestamp<\d{8}T\d{6}.\d{3}Z>                   controllers.ArticlesController.index(section, timestamp, pageNum: Int = 1, ajax: Option[String])
+GET     /t/$timestamp<\d{8}T\d{6}.\d{3}Z>/p/$pageNum<\d+>                   controllers.ArticlesController.index(section = "news", timestamp, pageNum: Int, ajax: Option[String])
+GET     /$section<blogs>/t/$timestamp<\d{8}T\d{6}.\d{3}Z>/p/$pageNum<\d+>   controllers.ArticlesController.index(section, timestamp, pageNum: Int, ajax: Option[String])
 
 GET     /about                                                              controllers.HomeController.about
 
