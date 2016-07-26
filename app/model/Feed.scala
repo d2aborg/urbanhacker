@@ -19,11 +19,15 @@ case class Feed(id: Option[Long],
                 siteUrl: Option[URI],
                 title: Option[String],
                 metaData: MetaData,
-                var frequency: Double = 0) {
+                var frequency: Double = Double.PositiveInfinity,
+                var groupFrequency: Double = Double.PositiveInfinity,
+                parseVersion: Int = Feed.parseVersion) {
   def favicon: Option[URI] = siteUrl.map(_.resolve("/favicon.ico"))
 }
 
 object Feed {
+  val parseVersion = 1
+
   def parse(source: FeedSource, download: XmlDownload): Option[CachedFeed] = {
     val maybeParsed: Option[(Feed, Seq[Option[Article]])] = if ((download.xml \\ "channel").nonEmpty) {
       val feed = Feed.rss(source, download, (download.xml \\ "channel").head)
@@ -47,8 +51,8 @@ object Feed {
 
   def pruneDuplicateArticles(articles: Seq[Article]): Seq[Article] = {
     articles
-      .groupBy(_.link).values.map(_.maxBy(_.pubDate)).toSeq
-      .groupBy(a => (a.title, a.text)).values.map(_.maxBy(_.pubDate)).toSeq
+      .groupBy(_.link).values.map(_.minBy(_.pubDate)).toSeq
+      .groupBy(a => (a.title, a.text)).values.map(_.minBy(_.pubDate)).toSeq
   }
 
   def rss(source: FeedSource, download: XmlDownload, channel: Node): Feed = {
@@ -114,13 +118,17 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
 
   def frequency = column[Double]("frequency")
 
+  def groupFrequency = column[Double]("group_frequency")
+
+  def parseVersion = column[Int]("parse_version")
+
   override def * =
-    (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency).shaped <> ( {
-      case (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency) =>
-        Feed(id, sourceId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency)
+    (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion).shaped <> ( {
+      case (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion) =>
+        Feed(id, sourceId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
     }, { f: Feed =>
       Some((f.id, f.sourceId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
-        f.metaData.checksum, f.metaData.timestamp), f.frequency))
+        f.metaData.checksum, f.metaData.timestamp), f.frequency, f.groupFrequency, f.parseVersion))
     })
 }
 

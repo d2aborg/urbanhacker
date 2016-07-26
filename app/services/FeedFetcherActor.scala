@@ -54,26 +54,25 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
 
   def update(source: FeedSource): Future[Seq[Option[Long]]] = {
     for {
-      previouslyUnparsed <- feedStore.loadUnparsedDownloadIds(source)
+      deleted <- feedStore.deleteOutOfVersionFeeds(source, Feed.parseVersion)
+      old <- feedStore.loadUnparsedDownloadIds(source)
       maybeNew <- downloadSave(source)
-      parseResult <- Future.traverse(previouslyUnparsed.map(Some(_)) :+ maybeNew) {
+      parsed <- Future.traverse(old.map(Some(_)) :+ maybeNew) {
         Futures.traverse(_)(parse(source)).map(_.flatten)
       }
-    } yield parseResult
+    } yield parsed
   }
 
   def parse(source: FeedSource)(downloadId: Long): Future[Option[Long]] = {
-    implicit val timeout: Timeout = 60.seconds
+    implicit val timeout: Timeout = 5.minutes
 
     (feedParser ? ParseFeed(source, downloadId)).mapTo[Option[Long]]
   }
 
   def downloadSave(source: FeedSource): Future[Option[Long]] =
-    feedStore.loadLatestMetaData(source).flatMap(downloadSaveNew(source))
-
-  def downloadSaveNew(source: FeedSource)(previous: Option[MetaData]): Future[Option[Long]] =
     for {
-      maybeDownloaded <- download(source, previous)
+      maybeLatest <- feedStore.loadLatestMetaData(source)
+      maybeDownloaded <- download(source, maybeLatest)
       maybeSaved <- Futures.traverse(maybeDownloaded)(feedStore.saveDownload(source))
     } yield maybeSaved
 

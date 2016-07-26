@@ -2,8 +2,7 @@
 
 # --- !Ups
 
-delete from feeds;
-alter table feeds add column "frequency" DOUBLE PRECISION NOT NULL;
+alter table feeds add column "frequency" DOUBLE PRECISION NOT NULL DEFAULT 'Infinity';
 
 # --- !Downs
 
