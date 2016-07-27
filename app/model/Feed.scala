@@ -52,7 +52,7 @@ object Feed {
   def pruneDuplicateArticles(articles: Seq[Article]): Seq[Article] = {
     articles
       .groupBy(_.link).values.map(_.minBy(_.pubDate)).toSeq
-      .groupBy(a => (a.title, a.text)).values.map(_.minBy(_.pubDate)).toSeq
+      .groupBy(a => (a.title, a.imageSource, a.text)).values.map(_.minBy(_.pubDate)).toSeq
   }
 
   def rss(source: FeedSource, download: XmlDownload, channel: Node): Feed = {

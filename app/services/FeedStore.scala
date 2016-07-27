@@ -8,6 +8,7 @@ import model._
 import play.api.db.slick.DatabaseConfigProvider
 import play.api.{Environment, Logger}
 import services.SlickPgPostgresDriver.api._
+import slick.dbio.DBIOAction
 import slick.dbio.Effect.Read
 import slick.driver.JdbcProfile
 
@@ -116,6 +117,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
 
   def saveCachedFeed(downloadId: Long)(cachedFeed: CachedFeed): Future[Option[Long]] = db.run {
     val proposedArticles = cachedFeed.articles.map(_.record)
+
     val existingArticles = for {
       s <- sources if s.url === cachedFeed.source.url.toString || (s.group.isDefined && s.group === cachedFeed.source.group)
       f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
@@ -123,41 +125,41 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       .map(pa => a.link === pa.link.toString || a.title === pa.title)
       .foldLeft(false.bind)(_ || _)
     } yield a
-    existingArticles
-      .result
-      .flatMap { existingArticles =>
-        val prunedArticles = proposedArticles
-          .filterNot(pa => existingArticles.exists(xa => xa.link == pa.link ||
-            (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
 
-        if (prunedArticles isEmpty) {
-          downloads.byId(Some(downloadId)).delete map { numDeleted =>
-            if (numDeleted > 0)
-              Logger.info(s"xxx> Deleted download $downloadId with no new articles: ${cachedFeed.source.url}")
-            None
+    existingArticles.result.flatMap { existingArticles =>
+      val prunedArticles = proposedArticles
+        .filterNot(pa => existingArticles.exists(xa => xa.link == pa.link ||
+          (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
+
+      if (prunedArticles isEmpty) {
+        downloads.byId(Some(downloadId)).delete map { numDeleted =>
+          if (numDeleted > 0)
+            Logger.info(s"xxx> Deleted download $downloadId with no new articles: ${cachedFeed.source.url}")
+          None
+        }
+      } else {
+        val groupPubDates = for {
+          s <- sources if s.url === cachedFeed.source.url.toString || (s.group.isDefined && s.group === cachedFeed.source.group)
+          f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+          a <- articles if a.feedId === f.id
+        } yield a.pubDate
+
+        groupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
+          cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ prunedArticles.map(_.pubDate))
+
+          val savedIds = for {
+            feedId <- feeds.returningId += cachedFeed.record
+            articleIds <- articles.returningId ++= prunedArticles.map(_.copy(feedId = Some(feedId)))
+          } yield {
+            (feedId, articleIds)
           }
-        } else {
-          val groupPubDates = for {
-            s <- sources if s.url === cachedFeed.source.url.toString || (s.group.isDefined && s.group === cachedFeed.source.group)
-            f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-            a <- articles if a.feedId === f.id
-          } yield a.pubDate
-          groupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
-            cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ prunedArticles.map(_.pubDate))
-
-            val savedIds = for {
-              feedId <- feeds.returningId += cachedFeed.record
-              articleIds <- articles.returningId ++= prunedArticles.map(_.copy(feedId = Some(feedId)))
-            } yield {
-              (feedId, articleIds)
-            }
-            savedIds map { case (feedId, articleIds) =>
-              Logger.info(s"sss> Saved Feed $feedId and ${articleIds.size} Articles for Download $downloadId: ${cachedFeed.source.url}")
-              Some(feedId)
-            }
+          savedIds map { case (feedId, articleIds) =>
+            Logger.info(s"sss> Saved Feed $feedId and ${articleIds.size} Articles for Download $downloadId: ${cachedFeed.source.url}")
+            Some(feedId)
           }
         }
-      } transactionally
+      }
+    } transactionally
   }
 
   def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
