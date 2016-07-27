@@ -246,6 +246,9 @@ class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
       Some((a.id, a.sourceId, a.feedId, a.title, a.link.toString, a.commentsLink.map(_.toString), a.pubDate,
         a.imageSource.map(_.toString), a.text))
     })
+
+  def linkIndex = index("articles_link_idx", link)
+  def titleIndex = index("articles_title_idx", title)
 }
 
 object articles extends TableQuery(new ArticlesTable(_)) {

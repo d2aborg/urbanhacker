@@ -40,6 +40,8 @@ class DownloadsTable(tag: Tag) extends Table[Download](tag, "downloads") {
     }, { d: Download =>
       Some((d.id, d.sourceId, (d.metaData.lastModified, d.metaData.eTag, d.metaData.checksum, d.metaData.timestamp), d.content))
     })
+
+  def timestampIndex = index("downloads_timestamp_idx", timestamp)
 }
 
 object downloads extends TableQuery(new DownloadsTable(_)) {

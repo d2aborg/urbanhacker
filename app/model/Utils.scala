@@ -123,6 +123,16 @@ object Utils {
 
   implicit def any2Tappable[A](x: A): Tappable[A] = new Tappable[A](x)
 
+  class TappableTraversable[A, M[B] <: Traversable[B]](x: M[A]) {
+    def tapeach[U](action: (A) => U): M[A] = {
+      x.foreach(action)
+      x
+    }
+  }
+
+  implicit def traversable2TappableTraversable[A, M[B] <: Traversable[B]](x: M[A]): TappableTraversable[A, M] =
+    new TappableTraversable[A, M](x)
+
   class NonUTCZonedDateTime(dt: ZonedDateTime) {
     def UTC: ZonedDateTime = dt.withZoneSameInstant(ZoneOffset.UTC)
   }

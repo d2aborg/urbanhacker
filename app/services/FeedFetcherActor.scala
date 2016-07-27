@@ -25,7 +25,7 @@ import scala.io.Source
 object FeedFetcherActor {
   def props = Props[FeedFetcherActor]
 
-  case class FetchFeed(source: FeedSource)
+  case class FetchFeed(sources: Seq[FeedSource])
 
   // configure the SSLContext with a permissive TrustManager
   SSLContext.setDefault(SSLContext.getInstance("TLS").tap { ctx =>
@@ -44,37 +44,41 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
                                  @Named("feed-parser-actor") feedParser: ActorRef)
                                 (implicit exec: ExecutionContext) extends Actor {
   def receive = {
-    case FetchFeed(source: FeedSource) =>
-      sender() ! Await.result(update(source).recover {
+    case FetchFeed(sourceGroup: Seq[FeedSource]) =>
+      sender() ! Await.result(update(sourceGroup).recover {
         case t =>
-          Logger.warn("Failed to update: " + source.url, t)
-          None
-      }, 5.minutes)
+          Logger.warn("Failed to update: " + sourceGroup.map(_.url), t)
+          Seq.empty
+      }, 30.minutes)
   }
 
-  def update(source: FeedSource): Future[Seq[Option[Long]]] = {
+  def update(sourceGroup: Seq[FeedSource]): Future[Seq[(FeedSource, Option[Long])]] = {
     for {
-      deleted <- feedStore.deleteOutOfVersionFeeds(source, Feed.parseVersion)
-      old <- feedStore.loadUnparsedDownloadIds(source)
-      maybeNew <- downloadSave(source)
-      parsed <- Future.traverse(old.map(Some(_)) :+ maybeNew) {
-        Futures.traverse(_)(parse(source)).map(_.flatten)
+      deleted <- feedStore.deleteOutOfVersionFeeds(sourceGroup, Feed.parseVersion)
+      someUnparsed <- feedStore.loadUnparsedDownloadIds(sourceGroup).map(_.map { case (s, dId) => (s, Some(dId)) })
+      maybeDownloaded <- downloadSave(sourceGroup)
+      allParsed <- Future {
+        (someUnparsed ++ maybeDownloaded).map { case (source, maybeDownloadId) =>
+          (source, maybeDownloadId.flatMap(parse(source)))
+        }
       }
-    } yield parsed
+    } yield allParsed
   }
 
-  def parse(source: FeedSource)(downloadId: Long): Future[Option[Long]] = {
-    implicit val timeout: Timeout = 5.minutes
+  def parse(source: FeedSource)(downloadId: Long): Option[Long] = {
+    implicit val timeout: Timeout = 20.seconds
 
-    (feedParser ? ParseFeed(source, downloadId)).mapTo[Option[Long]]
+    Await.result((feedParser ? ParseFeed(source, downloadId)).mapTo[Option[Long]], 20.seconds)
   }
 
-  def downloadSave(source: FeedSource): Future[Option[Long]] =
-    for {
-      maybeLatest <- feedStore.loadLatestMetaData(source)
-      maybeDownloaded <- download(source, maybeLatest)
-      maybeSaved <- Futures.traverse(maybeDownloaded)(feedStore.saveDownload(source))
-    } yield maybeSaved
+  def downloadSave(sourceGroup: Seq[FeedSource]): Future[Seq[(FeedSource, Option[Long])]] =
+    Future.traverse(sourceGroup) { source =>
+      for {
+        maybeLatest <- feedStore.loadLatestMetaData(source)
+        maybeDownloaded <- download(source, maybeLatest)
+        maybeSaved <- Futures.traverse(maybeDownloaded)(feedStore.saveDownload(source))
+      } yield (source, maybeSaved)
+    }
 
   def download(source: FeedSource, previous: Option[MetaData]): Future[Option[Download]] = {
     try {

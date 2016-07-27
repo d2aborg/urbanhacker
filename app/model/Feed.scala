@@ -26,7 +26,7 @@ case class Feed(id: Option[Long],
 }
 
 object Feed {
-  val parseVersion = 1
+  val parseVersion = 2
 
   def parse(source: FeedSource, download: XmlDownload): Option[CachedFeed] = {
     val maybeParsed: Option[(Feed, Seq[Option[Article]])] = if ((download.xml \\ "channel").nonEmpty) {
@@ -130,6 +130,10 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
       Some((f.id, f.sourceId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
         f.metaData.checksum, f.metaData.timestamp), f.frequency, f.groupFrequency, f.parseVersion))
     })
+
+  def timestampIndex = index("feeds_timestamp_idx", timestamp)
+
+  def parseVersionIndex = index("feeds_parse_version_idx", parseVersion)
 }
 
 object feeds extends TableQuery(new FeedsTable(_)) {

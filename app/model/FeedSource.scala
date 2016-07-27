@@ -27,6 +27,10 @@ class SourcesTable(tag: Tag) extends Table[FeedSource](tag, "sources") {
     }, { source: FeedSource =>
       Some((source.id, source.section, source.group, source.url.toString, source.siteUrl.map(_.toString), source.title))
     })
+
+  def sectionIndex = index("sources_section_idx", section)
+  def urlIndex = index("sources_url_idx", url)
+  def groupIndex = index("sources_group_idx", group)
 }
 
 object sources extends TableQuery(new SourcesTable(_)) {
