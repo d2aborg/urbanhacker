@@ -117,16 +117,18 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   def saveCachedFeed(downloadId: Long)(cachedFeed: CachedFeed): Future[Option[Long]] = db.run {
     val proposedArticles = cachedFeed.articles.map(_.record)
     val existingArticles = for {
-      s <- sources if s.url === cachedFeed.source.url.toString || s.group === cachedFeed.source.group
-      a <- articles if a.sourceId === s.id && proposedArticles
-      .map(pa => a.link === pa.link.toString || (a.title === pa.title && a.text === pa.text))
+      s <- sources if s.url === cachedFeed.source.url.toString || (s.group.isDefined && s.group === cachedFeed.source.group)
+      f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+      a <- articles if a.feedId === f.id && proposedArticles
+      .map(pa => a.link === pa.link.toString || a.title === pa.title)
       .foldLeft(false.bind)(_ || _)
     } yield a
     existingArticles
       .result
       .flatMap { existingArticles =>
         val prunedArticles = proposedArticles
-          .filterNot(pa => existingArticles.exists(a => a.link == pa.link || (a.title == pa.title && a.text == pa.text)))
+          .filterNot(pa => existingArticles.exists(xa => xa.link == pa.link ||
+            (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
 
         if (prunedArticles isEmpty) {
           downloads.byId(Some(downloadId)).delete map { numDeleted =>
@@ -135,16 +137,13 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
             None
           }
         } else {
-          val groupFrequency = cachedFeed.source.group.fold(0.0.bind) { group =>
-            (for {
-              source <- sources if source.id =!= cachedFeed.record.sourceId && source.group === group
-              feed <- feeds if feed.sourceId === source.id && feed.timestamp === (
-              for (fb <- feeds if fb.sourceId === feed.sourceId && fb.timestamp <= cachedFeed.record.metaData.timestamp)
-                yield fb.timestamp).max
-            } yield feed.frequency).sum.getOrElse(0.0)
-          }
-          groupFrequency.result.flatMap { groupFrequency =>
-            cachedFeed.record.groupFrequency = cachedFeed.record.frequency + groupFrequency
+          val groupPubDates = for {
+            s <- sources if s.url === cachedFeed.source.url.toString || (s.group.isDefined && s.group === cachedFeed.source.group)
+            f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+            a <- articles if a.feedId === f.id
+          } yield a.pubDate
+          groupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
+            cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ prunedArticles.map(_.pubDate))
 
             val savedIds = for {
               feedId <- feeds.returningId += cachedFeed.record

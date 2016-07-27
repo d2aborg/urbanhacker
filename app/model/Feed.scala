@@ -26,7 +26,7 @@ case class Feed(id: Option[Long],
 }
 
 object Feed {
-  val parseVersion = 2
+  val parseVersion = 3
 
   def parse(source: FeedSource, download: XmlDownload): Option[CachedFeed] = {
     val maybeParsed: Option[(Feed, Seq[Option[Article]])] = if ((download.xml \\ "channel").nonEmpty) {
@@ -44,7 +44,7 @@ object Feed {
 
     maybeParsed.map { case (feed, maybeArticles) =>
       val articles = pruneDuplicateArticles(maybeArticles.flatten).map(CachedArticle(source, feed, _))
-      feed.frequency = frequency(articles)
+      feed.frequency = frequency(articles.map(_.record.pubDate))
       CachedFeed(source, feed, articles)
     }
   }
@@ -86,12 +86,12 @@ object Feed {
     .replaceAll(" — Medium$", "")
     .replaceAll(": The Full Feed$", "")
 
-  def frequency(articles: Seq[CachedArticle]): Double = {
-    val mostRecent = articles take 10
-    val periods = mostRecent.map(_.record.pubDate).sortBy(_.toInstant.toEpochMilli).sliding(2).toSeq
-    val periodLengths = periods.map(range => ChronoUnit.SECONDS.between(range.head, range.last))
-    val weights = (1 to periodLengths.size).map(1.0 / _)
-    val weightedPeriods = for ((period, weight) <- periodLengths.zip(weights)) yield period * weight
+  def frequency(dateTimes: Seq[ZonedDateTime]): Double = {
+    val mostRecent = dateTimes.sorted.reverse.take(10)
+    val periods = mostRecent.sliding(2).toSeq
+    val periodSeconds = periods.map(range => ChronoUnit.SECONDS.between(range.last, range.head))
+    val weights = (1 to periodSeconds.size).map(1.0 / _)
+    val weightedPeriods = for ((period, weight) <- periodSeconds.zip(weights)) yield period * weight
     val weightedAveragePeriod = weightedPeriods.sum / weights.sum
     1.0 / weightedAveragePeriod
   }

@@ -49,7 +49,7 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
         case t =>
           Logger.warn("Failed to update: " + sourceGroup.map(_.url), t)
           Seq.empty
-      }, 30.minutes)
+      }, 60.minutes)
   }
 
   def update(sourceGroup: Seq[FeedSource]): Future[Seq[(FeedSource, Option[Long])]] = {

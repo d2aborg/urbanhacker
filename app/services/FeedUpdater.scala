@@ -46,7 +46,7 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
     while (byCycle.size < cycleLength)
       byCycle :+= Seq.empty
 
-    Logger.info("Sources by cycle and group: " + byCycle.map(_.map(_.map(_.url))))
+    Logger.info("Sources by cycle and group:\n" + byCycle.map(_.map(_.map(_.url))).mkString("\n"))
 
     byCycle
   }
