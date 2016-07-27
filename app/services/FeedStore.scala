@@ -57,7 +57,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
 
         val articlePage = articlesWithSourceAndFeed sortBy { case (s, f, a) =>
           val ageSeconds = extractEpoch(resolvedTimestamp.bind - a.pubDate).asColumnOf[Double] / 1000.0
-          pow(ageSeconds, 4.0.bind) * f.groupFrequency
+          pow(ageSeconds, 3.0.bind) * f.groupFrequency
         } drop offset take limit
 
         articlePage.result.tap { r =>
