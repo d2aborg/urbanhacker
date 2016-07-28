@@ -24,6 +24,29 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
   val refreshInterval = 1.minute
   var feedSources: Future[Seq[Seq[Seq[FeedSource]]]] = _
 
+  Logger.info("Scheduling updates...")
+
+  for (x <- 1 to refreshCycle.toMinutes.toInt) {
+    val reloadTask = actorSystem.scheduler.schedule(refreshInterval * x, refreshCycle) {
+      Logger.info("Running minute " + x)
+
+      if (x == 1)
+        feedSources = feedStore.loadSources map toGroupsBySizeAndURL(refreshCycle.toMinutes.toInt) recover { case t =>
+          Logger.warn("Failed to load sources", t)
+          Seq.empty
+        }
+
+      feedSources.foreach { feedSources =>
+        if (feedSources.size >= x)
+          updateGroups(feedSources(x - 1))
+      }
+    }
+
+    lifecycle.addStopHook { () =>
+      Future(reloadTask.cancel)
+    }
+  }
+
   def toGroupsBySizeAndURL(cycleLength: Int)(sources: Seq[FeedSource]): Seq[Seq[Seq[FeedSource]]] = {
     val byGroup = sources.groupBy(_.group)
     val grouped = byGroup.filter(_._1.nonEmpty).values.toSeq
@@ -43,27 +66,9 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
       }
     }
 
-    while (byCycle.size < cycleLength)
-      byCycle :+= Seq.empty
-
     Logger.info("Sources by cycle and group:\n" + byCycle.map(_.map(_.map(_.url))).mkString("\n"))
 
     byCycle
-  }
-
-  for (x <- 1 to refreshCycle.toMinutes.toInt) {
-    val reloadTask = actorSystem.scheduler.schedule(x * refreshInterval, refreshCycle) {
-      if (x == 1)
-        feedSources = feedStore.loadSources map toGroupsBySizeAndURL(refreshCycle.toMinutes.toInt)
-
-      feedSources.foreach { feedSources =>
-        updateGroups(feedSources(x-1))
-      }
-    }
-
-    lifecycle.addStopHook { () =>
-      Future(reloadTask.cancel)
-    }
   }
 
   def updateGroups(sourceGroups: Seq[Seq[FeedSource]]): Unit = {

@@ -60,11 +60,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
           pow(ageSeconds, 3.0.bind) * f.groupFrequency
         } drop offset take limit
 
-        articlePage.result.tap { r =>
-          Logger.info("Read articles query:\n" + r.statements.mkString("\n"))
-        }.map {
-          _.map(CachedArticle.tupled)
-        }.map { as =>
+        articlePage.result.map(_.map(CachedArticle.tupled)).map { as =>
           val articlePage = as.take(searchPermalink.pageSize)
           val resolvedPermalink = Permalink(resolvedTimestamp, searchPermalink.pageNum)
           val nextPage = Some(searchPermalink.pageNum + 1).filter(_ => as.size > searchPermalink.pageSize)
@@ -119,11 +115,9 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     val proposedArticles = cachedFeed.articles.map(_.record)
 
     val existingArticles = for {
-      s <- sources if s.url === cachedFeed.source.url.toString || (s.group.isDefined && s.group === cachedFeed.source.group)
+      s <- sources if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
       f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-      a <- articles if a.feedId === f.id && proposedArticles
-      .map(pa => a.link === pa.link.toString || a.title === pa.title)
-      .foldLeft(false.bind)(_ || _)
+      a <- articles if a.feedId === f.id && proposedArticles.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
     } yield a
 
     existingArticles.result.flatMap { existingArticles =>
@@ -139,7 +133,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         }
       } else {
         val groupPubDates = for {
-          s <- sources if s.url === cachedFeed.source.url.toString || (s.group.isDefined && s.group === cachedFeed.source.group)
+          s <- sources if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
           f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
           a <- articles if a.feedId === f.id
         } yield a.pubDate
