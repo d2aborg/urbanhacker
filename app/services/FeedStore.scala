@@ -6,7 +6,7 @@ import com.google.inject.{Inject, Singleton}
 import model.Utils._
 import model._
 import play.api.db.slick.DatabaseConfigProvider
-import play.api.{Environment, Logger}
+import play.api.{Environment, Logger, Mode}
 import services.SlickPgPostgresDriver.api._
 import slick.dbio.DBIOAction
 import slick.dbio.Effect.Read
@@ -82,7 +82,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     feeds.filter(_.sourceId inSet sourceGroup.map(_.id)).filter(_.parseVersion < parseVersion).delete
   } tap { eventualNum =>
     for (num <- eventualNum if num > 0)
-      Logger.info(s"xxx> Deleted $num out of version feeds: ${sourceGroup.map(_.url)}")
+      Logger.info(s"..x> Deleted $num out of version feeds: ${sourceGroup.map(_.url)}")
   }
 
   def loadUnparsedDownloadIds(sourceGroup: Seq[FeedSource]): Future[Seq[(FeedSource, Long)]] = db.run {
@@ -92,14 +92,14 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     } yield (source, download)).sortBy(_._2.timestamp).map(sd => (sd._1, sd._2.id.get)).result
   } tap { eventualDownloadIdsBySource =>
     for (downloadIdsBySource <- eventualDownloadIdsBySource if downloadIdsBySource.nonEmpty)
-      Logger.info(s"...> Loaded Ids of ${downloadIdsBySource.size} Unparsed Downloads: ${sourceGroup.map(_.url)}")
+      Logger.info(s".l.> Loaded Ids of ${downloadIdsBySource.size} Unparsed Downloads: ${sourceGroup.map(_.url)}")
   }
 
   def saveDownload(source: FeedSource)(download: Download): Future[Long] = db.run {
     downloads.returningId += download
   } tap { eventualId =>
     for (id <- eventualId)
-      Logger.info(s"...> Saved Download $id: ${source.url}")
+      Logger.info(s"s..> Saved Download $id: ${source.url}")
   }
 
   def loadLatestMetaData(source: FeedSource): Future[Option[MetaData]] = db.run {
@@ -128,7 +128,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       if (prunedArticles isEmpty) {
         downloads.byId(Some(downloadId)).delete map { numDeleted =>
           if (numDeleted > 0)
-            Logger.info(s"xxx> Deleted download $downloadId with no new articles: ${cachedFeed.source.url}")
+            Logger.info(s"..x> Deleted download $downloadId with no new articles: ${cachedFeed.source.url}")
           None
         }
       } else {
@@ -148,7 +148,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
             (feedId, articleIds)
           }
           savedIds map { case (feedId, articleIds) =>
-            Logger.info(s"sss> Saved Feed $feedId and ${articleIds.size} Articles for Download $downloadId: ${cachedFeed.source.url}")
+            Logger.info(s"s..> Saved Feed $feedId and ${articleIds.size} Articles for Download $downloadId: ${cachedFeed.source.url}")
             Some(feedId)
           }
         }
@@ -158,7 +158,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
 
   def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
     downloads.byId(Some(downloadId)).delete map { numDeleted =>
-      if (numDeleted > 0) Logger.info(s"xxx> Deleted unparseable download $downloadId: ${source.url}")
+      if (numDeleted > 0) Logger.info(s"..x> Deleted unparseable download $downloadId: ${source.url}")
       numDeleted > 0
     }
   }

@@ -3,8 +3,6 @@ package services
 import javax.inject.{Inject, Singleton}
 
 import akka.actor.{ActorRef, ActorSystem}
-import akka.pattern.ask
-import akka.util.Timeout
 import com.google.inject.name.Named
 import model.FeedSource
 import play.api.Logger
@@ -72,16 +70,9 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
   }
 
   def updateGroups(sourceGroups: Seq[Seq[FeedSource]]): Unit = {
-    Logger.info(s"###> Updating ${sourceGroups.flatten.size} sources...")
+    Logger.info(s"###> Updating ${sourceGroups.flatten.size} sources in ${sourceGroups.size} groups...")
 
-    for (updated <- Future.traverse(sourceGroups)(updateGroup).map(_.flatten))
-      Logger.info(s"###> Updated ${updated.flatMap(_._2).size}/${updated.size}")
+    for (sourceGroup <- sourceGroups)
+      feedFetcher ! FetchFeed(sourceGroup)
   }
-
-  def updateGroup(sourceGroup: Seq[FeedSource]): Future[Seq[(FeedSource, Option[Long])]] = {
-    implicit val timeout: Timeout = 60.seconds
-
-    (feedFetcher ? FetchFeed(sourceGroup)).mapTo[Seq[(FeedSource, Option[Long])]]
-  }
-
 }

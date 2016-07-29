@@ -26,7 +26,7 @@ case class Feed(id: Option[Long],
 }
 
 object Feed {
-  val parseVersion = 3
+  val parseVersion = 4
 
   def parse(source: FeedSource, download: XmlDownload): Option[CachedFeed] = {
     val maybeParsed: Option[(Feed, Seq[Option[Article]])] = if ((download.xml \\ "channel").nonEmpty) {
