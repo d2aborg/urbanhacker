@@ -14,7 +14,7 @@ case class Download(id: Option[Long], sourceId: Long, metaData: MetaData, conten
   def mkString: String = copy(content = Utils.crop(content, 100).replaceAll("\\s+", " ")).toString
 }
 
-case class XmlDownload(metaData: MetaData, xml: Elem)
+case class ParsedDownload(record: Download, xml: Elem)
 
 class DownloadsTable(tag: Tag) extends Table[Download](tag, "downloads") {
   def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)

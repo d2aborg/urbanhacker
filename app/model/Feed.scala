@@ -16,6 +16,7 @@ import scala.xml.{Node, NodeSeq}
 
 case class Feed(id: Option[Long],
                 sourceId: Long,
+                downloadId: Long,
                 siteUrl: Option[URI],
                 title: Option[String],
                 metaData: MetaData,
@@ -26,9 +27,9 @@ case class Feed(id: Option[Long],
 }
 
 object Feed {
-  val parseVersion = 4
+  val parseVersion = 5
 
-  def parse(source: FeedSource, download: XmlDownload): Option[CachedFeed] = {
+  def parse(source: FeedSource, download: ParsedDownload): Option[CachedFeed] = {
     val maybeParsed: Option[(Feed, Seq[Option[Article]])] = if ((download.xml \\ "channel").nonEmpty) {
       val feed = Feed.rss(source, download, (download.xml \\ "channel").head)
       val articles = for (item <- download.xml \\ "item") yield Article.rss(source, feed, item.head)
@@ -55,15 +56,15 @@ object Feed {
       .groupBy(a => (a.title, a.imageSource, a.text)).values.map(_.minBy(_.pubDate)).toSeq
   }
 
-  def rss(source: FeedSource, download: XmlDownload, channel: Node): Feed = {
+  def rss(source: FeedSource, download: ParsedDownload, channel: Node): Feed = {
     val title = nonEmpty(cleanTitle(channel \ "title"))
 
     val siteUrl = nonEmpty(unescape(channel \ "link")).flatMap(parseURI)
 
-    Feed(None, source.id, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.metaData)
+    Feed(None, source.id, download.record.id.get, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
   }
 
-  def atom(source: FeedSource, download: XmlDownload, feedRoot: Node): Feed = {
+  def atom(source: FeedSource, download: ParsedDownload, feedRoot: Node): Feed = {
     val title = nonEmpty(cleanTitle(if ((feedRoot \ "title" text) nonEmpty) feedRoot \ "title" else feedRoot \ "id"))
 
     val siteUrl = nonEmpty((feedRoot \ "link").filterNot { l =>
@@ -75,7 +76,7 @@ object Feed {
     if (siteUrl isEmpty)
       Logger.info("Found no viable link in feed: " + title + ", among: " + (feedRoot \ "link"))
 
-    Feed(None, source.id, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.metaData)
+    Feed(None, source.id, download.record.id.get, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
   }
 
   def cleanTitle(title: NodeSeq): String = unescape(title)
@@ -104,6 +105,10 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
 
   def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
 
+  def downloadId = column[Long]("download_id")
+
+  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get)
+
   def siteUrl = column[Option[String]]("site_url")
 
   def title = column[Option[String]]("title")
@@ -123,11 +128,11 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
   def parseVersion = column[Int]("parse_version")
 
   override def * =
-    (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion).shaped <> ( {
-      case (id, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion) =>
-        Feed(id, sourceId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
+    (id, sourceId, downloadId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion).shaped <> ( {
+      case (id, sourceId, downloadId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion) =>
+        Feed(id, sourceId, downloadId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
     }, { f: Feed =>
-      Some((f.id, f.sourceId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
+      Some((f.id, f.sourceId, f.downloadId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
         f.metaData.checksum, f.metaData.timestamp), f.frequency, f.groupFrequency, f.parseVersion))
     })
 

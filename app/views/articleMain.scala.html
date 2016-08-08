@@ -12,13 +12,11 @@
     }
 }") { title =>
     @template(section, title) {
-        <!--suppress ALL -->
-        <header>
-            <h1><span class="urban">@feedSections.getString(section).get</span></h1>
-        </header>
-
         <p class="text-muted">
             <small>
+                @feedSections.getString(section).get
+                <span class="text-muted">·</span>
+
                 @result.requested.fold {
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
@@ -105,9 +103,7 @@
                         loadMore();
                     }
                 });
-            });
 
-            $(document).ready(function() {
                 setInterval(function() {
                     @if(env.mode == Mode.Dev) {
                         console.log("Refreshing dates...");
@@ -115,32 +111,28 @@
                     $(".content .article .since-timestamp").each(function() {
                         var dts = $(this).attr("datetime");
                         var mom = moment(new Date(Date.parse(dts)));
-                        $(this).html(mom.fromNow())
+                        $(this).html(mom.fromNow());
                     });
                 }, 60000); // every minute
-            });
 
-            $(document).ready(function() {
                 setInterval(function() {
                     @if(env.mode == Mode.Dev) {
                         console.log("Checking for new stories...");
                     }
                 }, 60000); // every minute
-            });
 
-            $(document).ready(function() {
                 $(".content .permalink-timestamp").each(function() {
                     var dts = $(this).attr("datetime");
                     var mom = moment(new Date(Date.parse(dts)));
                     mom.utcOffset(moment().utcOffset());
-                    $(this).html(mom.format("ddd, D MMM YYYY, HH:mm:ss"))
+                    $(this).html(mom.format("ddd, D MMM YYYY, HH:mm:ss"));
                 });
-            });
 
-            // layout Masonry after each image loads
-            var $grid = $('.grid');
-            $grid.imagesLoaded().progress( function() {
-              $grid.masonry('layout');
+                // layout Masonry after each image loads
+                var $grid = $('.grid');
+                $grid.imagesLoaded().progress(function () {
+                    $grid.masonry('layout');
+                });
             });
         </script>
     }

@@ -111,7 +111,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       .map(_.map(_.metaData))
   }
 
-  def saveCachedFeed(downloadId: Long)(cachedFeed: CachedFeed): Future[Option[Long]] = db.run {
+  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] = db.run {
     val proposedArticles = cachedFeed.articles.map(_.record)
 
     val existingArticles = for {
@@ -126,9 +126,9 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
           (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
 
       if (prunedArticles isEmpty) {
-        downloads.byId(Some(downloadId)).delete map { numDeleted =>
+        downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
           if (numDeleted > 0)
-            Logger.info(s"..x> Deleted download $downloadId with no new articles: ${cachedFeed.source.url}")
+            Logger.info(s"..x> Deleted download ${cachedFeed.record.downloadId} with no new articles: ${cachedFeed.source.url}")
           None
         }
       } else {
@@ -148,7 +148,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
             (feedId, articleIds)
           }
           savedIds map { case (feedId, articleIds) =>
-            Logger.info(s"s..> Saved Feed $feedId and ${articleIds.size} Articles for Download $downloadId: ${cachedFeed.source.url}")
+            Logger.info(s"s..> Saved Feed $feedId and ${articleIds.size} Articles for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
             Some(feedId)
           }
         }

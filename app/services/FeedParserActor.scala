@@ -34,13 +34,13 @@ class FeedParserActor @Inject()(feedStore: FeedStore)(implicit exec: ExecutionCo
     for {
       maybeLoaded <- feedStore.loadUnparsedDownload(downloadId)
       maybeParsed <- Futures.traverse(maybeLoaded)(parse(source)).map(_.flatten)
-      maybeSaved <- Futures.traverse(maybeParsed)(feedStore.saveCachedFeed(downloadId)).map(_.flatten)
+      maybeSaved <- Futures.traverse(maybeParsed)(feedStore.saveCachedFeed).map(_.flatten)
     } yield maybeSaved
   }
 
   def parse(source: FeedSource)(download: Download): Future[Option[CachedFeed]] = Future {
     val xml = XML.load(new StringReader(download.content))
-    val xmlDownload = XmlDownload(download.metaData, xml)
-    Feed.parse(source, xmlDownload)
+    val parsedDownload = ParsedDownload(download, xml)
+    Feed.parse(source, parsedDownload)
   }
 }
