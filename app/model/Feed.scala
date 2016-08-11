@@ -27,7 +27,7 @@ case class Feed(id: Option[Long],
 }
 
 object Feed {
-  val parseVersion = 5
+  val parseVersion = 6
 
   def parse(source: FeedSource, download: ParsedDownload): Option[CachedFeed] = {
     val maybeParsed: Option[(Feed, Seq[Option[Article]])] = if ((download.xml \\ "channel").nonEmpty) {
@@ -145,6 +145,7 @@ object feeds extends TableQuery(new FeedsTable(_)) {
   val returningId = this returning this.map(_.id.get)
 
   val byId = this.findBy(_.id)
+  val byDownloadId = this.findBy(_.downloadId)
 
   def historic(section: String, timestamp: ZonedDateTime): Query[FeedsTable, Feed, Seq] =
     for {

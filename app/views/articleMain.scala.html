@@ -79,7 +79,8 @@
 
                 var grid = $('.grid');
 
-                $.ajax({ url: nextPageUrl + ((nextPageUrl.indexOf('?') == -1) ? '?' : '&') + "ajax=true" }).done(function(data) {
+                var url = nextPageUrl + (nextPageUrl.indexOf('?') == -1 ? '?' : '&') + "ajax=true";
+                $.ajax({ url: url }).done(function(data) {
                     var newContent = $("<div>").append(data);
 
                     var newItems = newContent.find("> .grid > .grid-item");

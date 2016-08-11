@@ -4,11 +4,13 @@ import javax.inject.{Inject, Singleton}
 
 import akka.actor.{ActorRef, ActorSystem}
 import com.google.inject.name.Named
+import com.markatta.timeforscala._
 import model.FeedSource
 import play.api.Logger
 import play.api.inject.ApplicationLifecycle
-import services.FeedFetcherActor.FetchFeed
+import services.FeedFetcherActor.{FetchFeeds, FullReload}
 
+import model.Utils._
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -20,59 +22,51 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
                            (implicit exec: ExecutionContext) {
   val refreshCycle = 30.minutes
   val refreshInterval = 1.minute
-  var feedSources: Future[Seq[Seq[Seq[FeedSource]]]] = _
+  var eventualFeedSourceBatches: Future[Seq[Seq[FeedSource]]] = _
 
   Logger.info("Scheduling updates...")
 
   for (x <- 1 to refreshCycle.toMinutes.toInt) {
-    val reloadTask = actorSystem.scheduler.schedule(refreshInterval * x, refreshCycle) {
-      Logger.info("Running minute " + x)
+    actorSystem.scheduler.schedule(refreshInterval * x, refreshCycle) {
+      Logger.info("Running refresh cycle #" + x + "/" + refreshCycle.toMinutes)
 
-      if (x == 1)
-        feedSources = feedStore.loadSources map toGroupsBySizeAndURL(refreshCycle.toMinutes.toInt) recover { case t =>
+      if (x == 1) {
+        Logger.info("Performing full refresh at cycle 1...")
+
+        val eventualSources = feedStore.loadSources recover { case t =>
           Logger.warn("Failed to load sources", t)
           Seq.empty
         }
 
-      feedSources.foreach { feedSources =>
-        if (feedSources.size >= x)
-          updateGroups(feedSources(x - 1))
-      }
-    }
+        eventualFeedSourceBatches = eventualSources map batch(refreshCycle.toMinutes.toInt)
 
-    lifecycle.addStopHook { () =>
-      Future(reloadTask.cancel)
+        eventualSources foreach fullRefresh
+      }
+
+      eventualFeedSourceBatches foreach { feedSourceBatch =>
+        if (feedSourceBatch.size >= x)
+          update(feedSourceBatch(x - 1))
+      }
+    } tap { reloadTask =>
+      lifecycle.addStopHook { () =>
+        Future(reloadTask.cancel)
+      }
     }
   }
 
-  def toGroupsBySizeAndURL(cycleLength: Int)(sources: Seq[FeedSource]): Seq[Seq[Seq[FeedSource]]] = {
-    val byGroup = sources.groupBy(_.group)
-    val grouped = byGroup.filter(_._1.nonEmpty).values.toSeq
-    val independent = byGroup(None).map(Seq(_))
-    val all = grouped ++ independent
-    val bySizeAndUrl = all.sortBy(group => (-group.size, group.head.group.getOrElse(group.head.url.toString)))
-
-    val intervalSize = (bySizeAndUrl.flatten.size + cycleLength - 1) / cycleLength
-
-    var byCycle = Seq.empty[Seq[Seq[FeedSource]]]
-    var currentGroups = Seq.empty[Seq[FeedSource]]
-    for (sourceGroup <- bySizeAndUrl) {
-      currentGroups :+= sourceGroup
-      if (currentGroups.flatten.size >= intervalSize) {
-        byCycle :+= currentGroups
-        currentGroups = Seq.empty[Seq[FeedSource]]
-      }
-    }
-
-    Logger.info("Sources by cycle and group:\n" + byCycle.map(_.map(_.map(_.url))).mkString("\n"))
-
-    byCycle
+  def batch(cycleLength: Int)(sources: Seq[FeedSource]): Seq[Seq[FeedSource]] = {
+    sources.grouped((sources.size + cycleLength - 1) / cycleLength).toSeq
   }
 
-  def updateGroups(sourceGroups: Seq[Seq[FeedSource]]): Unit = {
-    Logger.info(s"###> Updating ${sourceGroups.flatten.size} sources in ${sourceGroups.size} groups...")
+  def fullRefresh(sources: Seq[FeedSource]): Unit = {
+    Logger.info(s"###> Full refresh of ${sources.size} sources...")
 
-    for (sourceGroup <- sourceGroups)
-      feedFetcher ! FetchFeed(sourceGroup)
+    feedFetcher ! FullReload(sources)
+  }
+
+  def update(sources: Seq[FeedSource]): Unit = {
+    Logger.info(s"###> Updating ${sources.size} sources...")
+
+    feedFetcher ! FetchFeeds(sources)
   }
 }

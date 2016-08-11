@@ -11,6 +11,7 @@ import com.optimaize.langdetect.ngram.NgramExtractors
 import com.optimaize.langdetect.profiles.LanguageProfileReader
 import com.optimaize.langdetect.text.{CommonTextObjectFactories, TextObjectFactory}
 import com.optimaize.langdetect.{LanguageDetector, LanguageDetectorBuilder}
+import com.markatta.timeforscala._
 import model.Utils._
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
@@ -84,10 +85,10 @@ object Article {
 
       for (dateNode <- dateNodes; nodeText <- unescapeOption(dateNode)) {
         val parsed = parseInternetDateTime(nodeText)
-        if (parsed.isLeft)
-          return parsed.left.toOption
+        if (parsed.isRight)
+          return parsed.right.toOption
 
-        Logger.warn("Failed to parse date of '" + title + "' in feed '" + feed.title.getOrElse(source.url) + "': " + parsed.right.get)
+        Logger.warn("Failed to parse date of '" + title + "' in feed '" + feed.title.getOrElse(source.url) + "': " + parsed.left.get)
       }
 
       Logger.warn("No parseable date in '" + title + "' in feed '" + feed.title.getOrElse(source.url) + "' among: " + dateNodes)
@@ -100,7 +101,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link get)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    dateOption.map(Article(None, source.id, feed.id, title, new URI(link get), commentsLink.map(new URI(_)), _, maybeImgSrc, strippedText)) filter isEnglish
+    dateOption.map(date => Article(None, source.id, feed.id, title, new URI(link get), commentsLink.map(new URI(_)), min(date, feed.metaData.timestamp), maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def stripText(content: NodeSeq, title: String, feed: Feed): String = {
@@ -124,7 +125,7 @@ object Article {
     val commentsLink = nonEmpty((entry \ "link").filter(n => n \@ "rel" == "replies" && n \@ "type" == "text/html") \@ "href")
 
     val date = parseInternetDateTime(unescape(entry \ "updated"))
-    if (date.isRight) {
+    if (date.isLeft) {
       Logger.warn("Failed to parse date of '" + title + "' in feed '" + feed.title.getOrElse(source.url) + "': " + date.right.get)
       return None
     }
@@ -136,7 +137,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    Some(Article(None, source.id, feed.id, title, new URI(link), commentsLink.map(new URI(_)), date.left get, maybeImgSrc, strippedText)) filter isEnglish
+    Some(Article(None, source.id, feed.id, title, new URI(link), commentsLink.map(new URI(_)), min(date.right get, feed.metaData.timestamp), maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def tooSmall(img: Node): Boolean = {

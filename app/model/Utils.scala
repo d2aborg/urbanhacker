@@ -9,6 +9,7 @@ import java.time.{OffsetDateTime, ZoneOffset, ZonedDateTime}
 import java.util.Locale
 
 import org.apache.commons.lang3.StringEscapeUtils._
+import com.markatta.timeforscala._
 import play.api.Logger
 import slick.dbio.{DBIOAction, Effect, NoStream}
 
@@ -78,22 +79,22 @@ object Utils {
     // 2015-09-29 14:56:55 UTC
     ("ISO With Spaces", DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss zzz", Locale.US)))
 
-  def parseInternetDateTime(dts: String): Either[ZonedDateTime, Seq[DateTimeParseException]] = {
-    def parseInternetDateTime(dtf: DateTimeFormatter, desc: String): Either[ZonedDateTime, DateTimeParseException] = {
+  def parseInternetDateTime(dts: String): Either[Seq[DateTimeParseException], ZonedDateTime] = {
+    def parseInternetDateTime(dtf: DateTimeFormatter, desc: String): Either[DateTimeParseException, ZonedDateTime] = {
       try {
         val parsed = ZonedDateTime parse(dts replaceFirst("^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ", ""), dtf) withZoneSameInstant ZoneOffset.UTC
-        Left(parsed)
+        Right(parsed)
       } catch {
-        case e: DateTimeParseException => Right(new DateTimeParseException(desc + ": " + e.getMessage, e.getParsedString, e.getErrorIndex, e))
+        case e: DateTimeParseException => Left(new DateTimeParseException(desc + ": " + e.getMessage, e.getParsedString, e.getErrorIndex, e))
       }
     }
 
     val parsedOrFailures = for ((formatDesc, dateTimeFormat) <- internetDateTimeFormats) yield parseInternetDateTime(dateTimeFormat, formatDesc)
 
-    for (parsedOrFailure <- parsedOrFailures; parsed <- parsedOrFailure.left.toOption)
-      return Left(parsed)
+    for (parsedOrFailure <- parsedOrFailures; parsed <- parsedOrFailure.right)
+      return Right(parsed)
 
-    Right(for (parsedOrFailure <- parsedOrFailures; failure <- parsedOrFailure.right.toOption) yield failure)
+    Left(for (parsedOrFailure <- parsedOrFailures; failure <- parsedOrFailure.left.toOption) yield failure)
   }
 
   def unescapeOption(ns: NodeSeq): Option[String] = Some(unescape(ns text)).filter(_.nonEmpty)
@@ -113,6 +114,8 @@ object Utils {
         Logger.warn("Failed to parse URI: " + uri, maybeURI.failed.get)
       maybeURI.toOption
     }
+
+  def min(d1: ZonedDateTime, d2: ZonedDateTime): ZonedDateTime = if (d1 > d2) d1 else d2
 
   class Tappable[A](x: A) {
     def tap[U](action: (A) => U): A = {
