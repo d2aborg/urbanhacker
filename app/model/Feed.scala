@@ -14,9 +14,8 @@ import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
 import scala.xml.{Node, NodeSeq}
 
-case class Feed(id: Option[Long],
+case class Feed(downloadId: Long,
                 sourceId: Long,
-                downloadId: Long,
                 siteUrl: Option[URI],
                 title: Option[String],
                 metaData: MetaData,
@@ -61,7 +60,7 @@ object Feed {
 
     val siteUrl = nonEmpty(unescape(channel \ "link")).flatMap(parseURI)
 
-    Feed(None, source.id, download.record.id.get, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
+    Feed(download.record.id.get, source.id, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
   }
 
   def atom(source: FeedSource, download: ParsedDownload, feedRoot: Node): Feed = {
@@ -76,7 +75,7 @@ object Feed {
     if (siteUrl isEmpty)
       Logger.info("Found no viable link in feed: " + title + ", among: " + (feedRoot \ "link"))
 
-    Feed(None, source.id, download.record.id.get, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
+    Feed(download.record.id.get, source.id, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
   }
 
   def cleanTitle(title: NodeSeq): String = unescape(title)
@@ -99,15 +98,13 @@ object Feed {
 }
 
 class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
-  def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
+  def downloadId = column[Long]("download_id", O.PrimaryKey)
+
+  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get)
 
   def sourceId = column[Long]("source_id")
 
   def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
-
-  def downloadId = column[Long]("download_id")
-
-  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get)
 
   def siteUrl = column[Option[String]]("site_url")
 
@@ -128,11 +125,11 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
   def parseVersion = column[Int]("parse_version")
 
   override def * =
-    (id, sourceId, downloadId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion).shaped <> ( {
-      case (id, sourceId, downloadId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion) =>
-        Feed(id, sourceId, downloadId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
+    (downloadId, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion).shaped <> ( {
+      case (downloadId, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion) =>
+        Feed(downloadId, sourceId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
     }, { f: Feed =>
-      Some((f.id, f.sourceId, f.downloadId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
+      Some((f.downloadId, f.sourceId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
         f.metaData.checksum, f.metaData.timestamp), f.frequency, f.groupFrequency, f.parseVersion))
     })
 
@@ -142,9 +139,6 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
 }
 
 object feeds extends TableQuery(new FeedsTable(_)) {
-  val returningId = this returning this.map(_.id.get)
-
-  val byId = this.findBy(_.id)
   val byDownloadId = this.findBy(_.downloadId)
 
   def historic(section: String, timestamp: ZonedDateTime): Query[FeedsTable, Feed, Seq] =

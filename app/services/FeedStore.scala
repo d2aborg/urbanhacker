@@ -49,7 +49,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         val articlesWithSourceAndFeed = for {
           s <- sources.bySection(section)
           f <- feeds if f.sourceId === s.id && f.timestamp <= resolvedTimestamp
-          a <- articles if a.feedId === f.id
+          a <- articles if a.downloadId === f.downloadId
         } yield (s, f, a)
 
         val offset = (searchPermalink.pageNum - 1) * searchPermalink.pageSize
@@ -103,45 +103,44 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       .map(_.map(_.metaData))
   }
 
-  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] = db.run {
-    feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { numDeletedFeeds =>
-      val proposedArticles = cachedFeed.articles.map(_.record)
+  def saveCachedFeed(cachedFeed: CachedFeed): Future[Boolean] = db.run {
+    val proposedArticles = cachedFeed.articles.map(_.record)
 
-      val existingArticles = for {
-        s <- sources if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
-        f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-        a <- articles if a.feedId === f.id && proposedArticles.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
-      } yield a
+    val existingArticles = for {
+      s <- sources if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
+      f <- feeds if f.downloadId =!= cachedFeed.record.downloadId && f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+      a <- articles if a.downloadId === f.downloadId && proposedArticles.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
+    } yield a
 
-      existingArticles.result.flatMap { existingArticles =>
-        val prunedArticles = proposedArticles
-          .filterNot(pa => existingArticles.exists(xa => xa.link == pa.link ||
-            (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
+    existingArticles.result.flatMap { existingArticles =>
+      val prunedArticles = proposedArticles.filterNot(pa =>
+        existingArticles.exists(xa => xa.link == pa.link || (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
 
+      feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { numDeletedFeeds =>
         if (prunedArticles isEmpty) {
           downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
             if (numDeleted > 0)
               Logger.info(s"..x> Deleted download ${cachedFeed.record.downloadId} with no new articles: ${cachedFeed.source.url}")
-            None
+            false
           }
         } else {
           val groupPubDates = for {
             s <- sources if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
             f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-            a <- articles if a.feedId === f.id
+            a <- articles if a.downloadId === f.downloadId
           } yield a.pubDate
 
           groupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
             cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ prunedArticles.map(_.pubDate))
 
             (for {
-              feedId <- feeds.returningId += cachedFeed.record
-              articleIds <- articles.returningId ++= prunedArticles.map(_.copy(feedId = Some(feedId)))
+              numFeedsInserted <- feeds += cachedFeed.record
+              articleIds <- articles.returningId ++= prunedArticles
             } yield {
-              (feedId, articleIds)
-            }) map { case (feedId, articleIds) =>
-              Logger.info(s"s..> Saved Feed $feedId and ${articleIds.size} Articles for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
-              Some(feedId)
+              (numFeedsInserted, articleIds)
+            }) map { case (numFeedsInserted, articleIds) =>
+              Logger.info(s"s..> Saved $numFeedsInserted Feeds and ${articleIds.size} Articles for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
+              numFeedsInserted > 0
             }
           }
         }
@@ -150,9 +149,12 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   }
 
   def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
-    downloads.byId(Some(downloadId)).delete map { numDeleted =>
-      if (numDeleted > 0) Logger.info(s"..x> Deleted unparseable download $downloadId: ${source.url}")
-      numDeleted > 0
+    downloads.byId(Some(downloadId)).delete map {
+      numDeleted =>
+        if (numDeleted > 0) Logger.info(s"..x> Deleted unparseable download $downloadId: ${
+          source.url
+        }")
+        numDeleted > 0
     }
   }
 

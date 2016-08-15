@@ -30,11 +30,11 @@ class FeedParserActor @Inject()(feedStore: FeedStore)(implicit exec: ExecutionCo
       }, 20.seconds)
   }
 
-  def parseSave(source: FeedSource, downloadId: Long): Future[Option[Long]] = {
+  def parseSave(source: FeedSource, downloadId: Long): Future[Option[Boolean]] = {
     for {
       maybeLoaded <- feedStore.loadDownload(downloadId)
       maybeParsed <- Futures.traverse(maybeLoaded)(parse(source)).map(_.flatten)
-      maybeSaved <- Futures.traverse(maybeParsed)(feedStore.saveCachedFeed).map(_.flatten)
+      maybeSaved <- Futures.traverse(maybeParsed)(feedStore.saveCachedFeed)
     } yield maybeSaved
   }
 
