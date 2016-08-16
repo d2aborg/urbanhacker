@@ -83,10 +83,13 @@ object Article {
     def dateOption: Option[ZonedDateTime] = {
       val dateNodes = item \ "date" ++ item \ "pubDate"
 
-      for (dateNode <- dateNodes; nodeText <- unescapeOption(dateNode)) {
+      for {
+        dateNode <- dateNodes
+        nodeText <- unescapeOption(dateNode)
+      } {
         val parsed = parseInternetDateTime(nodeText)
         if (parsed.isRight)
-          return parsed.right.toOption
+          return Some(parsed.right.get)
 
         Logger.warn("Failed to parse date of '" + title + "' in feed '" + feed.title.getOrElse(source.url) + "': " + parsed.left.get)
       }
@@ -101,7 +104,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link get)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    dateOption.map(date => Article(None, feed.downloadId, source.id, title, new URI(link get), commentsLink.map(new URI(_)), min(date, feed.metaData.timestamp), maybeImgSrc, strippedText)) filter isEnglish
+    dateOption.map(date => Article(None, feed.downloadId, source.id, title, new URI(link get), commentsLink.map(new URI(_)), date, maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def stripText(content: NodeSeq, title: String, feed: Feed): String =
@@ -138,7 +141,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    Some(Article(None, feed.downloadId, source.id, title, new URI(link), commentsLink.map(new URI(_)), min(date.right get, feed.metaData.timestamp), maybeImgSrc, strippedText)) filter isEnglish
+    Some(Article(None, feed.downloadId, source.id, title, new URI(link), commentsLink.map(new URI(_)), date.right get, maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def tooSmall(img: Node): Boolean = {

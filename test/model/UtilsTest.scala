@@ -1,6 +1,6 @@
 package model
 
-import java.time.{OffsetDateTime, ZonedDateTime}
+import java.time.ZonedDateTime
 
 import org.scalatest._
 
@@ -14,15 +14,15 @@ class UtilsTest extends FlatSpec with Matchers {
   }
 
   "Utils.parseInternetDateTime" should "parse incorrect weekdays" in  {
-    Utils.parseInternetDateTime("Thu, 06 Apr 2016 15:00:00 +0300") shouldBe Left(OffsetDateTime.parse("2016-04-06T12:00:00Z"))
+    Utils.parseInternetDateTime("Thu, 06 Apr 2016 15:00:00 +0300") shouldBe Right(ZonedDateTime.parse("2016-04-06T12:00:00Z"))
   }
   it should "parse RFC 1123 with incorrect weekdays" in  {
-    Utils.parseInternetDateTime("Thu, 06 Apr 2016 15:00:00 +0300") shouldBe Left(OffsetDateTime.parse("2016-04-06T12:00:00Z"))
+    Utils.parseInternetDateTime("Thu, 06 Apr 2016 15:00:00 +0300") shouldBe Right(ZonedDateTime.parse("2016-04-06T12:00:00Z"))
   }
   it should "parse RFC 1123 with inset offset" in  {
-    Utils.parseInternetDateTime("Tue, 4 Feb 2009 15:50:00+0300") shouldBe Left(OffsetDateTime.parse("2009-02-04T12:50:00Z"))
+    Utils.parseInternetDateTime("Tue, 4 Feb 2009 15:50:00+0300") shouldBe Right(ZonedDateTime.parse("2009-02-04T12:50:00Z"))
   }
   it should "parse ISO-8601" in  {
-    Utils.parseInternetDateTime("2016-04-08T00:00:00-07:00") shouldBe Left(OffsetDateTime.parse("2016-04-08T07:00:00Z"))
+    Utils.parseInternetDateTime("2016-04-08T00:00:00-07:00") shouldBe Right(ZonedDateTime.parse("2016-04-08T07:00:00Z"))
   }
 }

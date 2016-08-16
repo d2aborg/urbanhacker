@@ -100,7 +100,7 @@ object Feed {
 class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
   def downloadId = column[Long]("download_id", O.PrimaryKey)
 
-  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get)
+  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get, onUpdate = Restrict, onDelete = Cascade)
 
   def sourceId = column[Long]("source_id")
 

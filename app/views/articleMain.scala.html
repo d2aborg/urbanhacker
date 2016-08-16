@@ -18,19 +18,19 @@
                 <span class="text-muted">·</span>
 
                 @result.requested.fold {
+                    @result.permalink.map { permalink =>
+                        <span class="text-nowrap">
+                            <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
+                            <a href="@routes.ArticlesController.index(section, permalink.urlTimestamp, permalink.pageNum, None)">Permalink</a>
+                        </span>
+
+                        <span class="text-muted">·</span>
+                    }
+
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
                         <a href='@routes.ArticlesController.index(section, "", 1, None)'>Reload</a>
                     </span>
-
-                    @result.permalink.map { permalink =>
-                        <span class="text-muted">·</span>
-
-                        <span class="text-nowrap">
-                            <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
-                            <a href="@routes.ArticlesController.index(section, permalink.urlTimestamp, permalink.pageNum, None)">Permalink &raquo;</a>
-                        </span>
-                    }
                 } { requested =>
                     <span class="text-nowrap">
                         <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
