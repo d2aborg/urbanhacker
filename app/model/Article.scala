@@ -23,7 +23,7 @@ import scala.math.max
 import scala.xml._
 import scala.xml.parsing.NoBindingFactoryAdapter
 
-case class Article(id: Option[Long], downloadId: Long, sourceId: Long, title: String, link: URI, commentsLink: Option[URI],
+case class Article(id: Option[Long], sourceId: Long, feedId: Option[Long], title: String, link: URI, commentsLink: Option[URI],
                    pubDate: ZonedDateTime, imageSource: Option[URI], text: String) extends Ordered[Article] {
   override def compare(that: Article): Int = -pubDate.compareTo(that.pubDate)
 
@@ -104,7 +104,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link get)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    dateOption.map(date => Article(None, feed.downloadId, source.id, title, new URI(link get), commentsLink.map(new URI(_)), date, maybeImgSrc, strippedText)) filter isEnglish
+    dateOption.map(date => Article(None, source.id, feed.id, title, new URI(link get), commentsLink.map(new URI(_)), date, maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def stripText(content: NodeSeq, title: String, feed: Feed): String =
@@ -141,7 +141,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    Some(Article(None, feed.downloadId, source.id, title, new URI(link), commentsLink.map(new URI(_)), date.right get, maybeImgSrc, strippedText)) filter isEnglish
+    Some(Article(None, source.id, feed.id, title, new URI(link), commentsLink.map(new URI(_)), date.right get, maybeImgSrc, strippedText)) filter isEnglish
   }
 
   def tooSmall(img: Node): Boolean = {
@@ -223,15 +223,13 @@ object Article {
 class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
   def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
 
-  def downloadId = column[Long]("download_id")
-
-  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get)
-
-  def feed = foreignKey("feed_fk", downloadId, feeds)(_.downloadId, onUpdate = Restrict, onDelete = Cascade)
-
   def sourceId = column[Long]("source_id")
 
   def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
+
+  def feedId = column[Option[Long]]("feed_id")
+
+  def feed = foreignKey("feed_fk", feedId, feeds)(_.id, onUpdate = Restrict, onDelete = Cascade)
 
   def title = column[String]("title")
 
@@ -246,11 +244,11 @@ class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
   def text = column[String]("text")
 
   override def * =
-    (id, downloadId, sourceId, title, link, commentsLink, pubDate, imageSource, text).shaped <> ( {
-      case (id, downloadId, sourceId, title, link, commentsLink, pubDate, imageSource, text) =>
-        Article(id, downloadId, sourceId, title, new URI(link), commentsLink.map(new URI(_)), pubDate, imageSource.map(new URI(_)), text)
+    (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text).shaped <> ( {
+      case (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text) =>
+        Article(id, sourceId, feedId, title, new URI(link), commentsLink.map(new URI(_)), pubDate, imageSource.map(new URI(_)), text)
     }, { a: Article =>
-      Some((a.id, a.downloadId, a.sourceId, a.title, a.link.toString, a.commentsLink.map(_.toString), a.pubDate,
+      Some((a.id, a.sourceId, a.feedId, a.title, a.link.toString, a.commentsLink.map(_.toString), a.pubDate,
         a.imageSource.map(_.toString), a.text))
     })
 
@@ -272,7 +270,7 @@ object articles extends TableQuery(new ArticlesTable(_)) {
     for {
       s <- sources.bySection(section)
       f <- feeds if f.sourceId === s.id && f.timestamp <= historicTimestamp
-      a <- articles if a.downloadId === f.downloadId && a.link === link && (a.pubDate > pubDate || (a.pubDate === pubDate && f.timestamp > feedTimestamp))
+      a <- articles if a.feedId === f.id && a.link === link && (a.pubDate > pubDate || (a.pubDate === pubDate && f.timestamp > feedTimestamp))
     } yield a
 }
 

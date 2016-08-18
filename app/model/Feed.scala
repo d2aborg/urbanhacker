@@ -14,8 +14,9 @@ import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
 import scala.xml.{Node, NodeSeq}
 
-case class Feed(downloadId: Long,
+case class Feed(id: Option[Long],
                 sourceId: Long,
+                downloadId: Long,
                 siteUrl: Option[URI],
                 title: Option[String],
                 metaData: MetaData,
@@ -60,7 +61,7 @@ object Feed {
 
     val siteUrl = nonEmpty(unescape(channel \ "link")).flatMap(parseURI)
 
-    Feed(download.record.id.get, source.id, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
+    Feed(None, source.id, download.record.id.get, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
   }
 
   def atom(source: FeedSource, download: ParsedDownload, feedRoot: Node): Feed = {
@@ -75,7 +76,7 @@ object Feed {
     if (siteUrl isEmpty)
       Logger.info("Found no viable link in feed: " + title + ", among: " + (feedRoot \ "link"))
 
-    Feed(download.record.id.get, source.id, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
+    Feed(None, source.id, download.record.id.get, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
   }
 
   def cleanTitle(title: NodeSeq): String = unescape(title)
@@ -98,13 +99,17 @@ object Feed {
 }
 
 class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
-  def downloadId = column[Long]("download_id", O.PrimaryKey)
-
-  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get, onUpdate = Restrict, onDelete = Cascade)
+  def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
 
   def sourceId = column[Long]("source_id")
 
   def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
+
+  def downloadId = column[Long]("download_id")
+
+  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get, onUpdate = Restrict, onDelete = Cascade)
+
+  def downloadIdIndex = index("feeds_download_id_idx", downloadId, unique = true)
 
   def siteUrl = column[Option[String]]("site_url")
 
@@ -118,27 +123,30 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
 
   def timestamp = column[ZonedDateTime]("timestamp")
 
+  def timestampIndex = index("feeds_timestamp_idx", timestamp)
+
   def frequency = column[Double]("frequency")
 
   def groupFrequency = column[Double]("group_frequency")
 
   def parseVersion = column[Int]("parse_version")
 
+  def parseVersionIndex = index("feeds_parse_version_idx", parseVersion)
+
   override def * =
-    (downloadId, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion).shaped <> ( {
-      case (downloadId, sourceId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion) =>
-        Feed(downloadId, sourceId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
+    (id, sourceId, downloadId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion).shaped <> ( {
+      case (id, sourceId, downloadId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion) =>
+        Feed(id, sourceId, downloadId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
     }, { f: Feed =>
-      Some((f.downloadId, f.sourceId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
+      Some((f.id, f.sourceId, f.downloadId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
         f.metaData.checksum, f.metaData.timestamp), f.frequency, f.groupFrequency, f.parseVersion))
     })
-
-  def timestampIndex = index("feeds_timestamp_idx", timestamp)
-
-  def parseVersionIndex = index("feeds_parse_version_idx", parseVersion)
 }
 
 object feeds extends TableQuery(new FeedsTable(_)) {
+  val returningId = this returning this.map(_.id.get)
+
+  val byId = this.findBy(_.id)
   val byDownloadId = this.findBy(_.downloadId)
 
   def historic(section: String, timestamp: ZonedDateTime): Query[FeedsTable, Feed, Seq] =
