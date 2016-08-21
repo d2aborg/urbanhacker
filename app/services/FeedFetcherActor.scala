@@ -84,6 +84,9 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
     }
 
   def download(source: FeedSource, previous: Option[MetaData]): Future[Option[Download]] = {
+    val timestamp = ZonedDateTime.now(ZoneOffset.UTC)
+    feedStore.updateSourceTimestamp(source.copy(timestamp = Some(timestamp)))
+
     try {
       val connection = source.url.toURL.openConnection.asInstanceOf[HttpURLConnection]
       connection match {
@@ -109,11 +112,12 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
       val eventualMaybeContent = Future {
         try connection.tap(_.connect()) match {
           case c if c.getResponseCode == 304 => None
-          case c => Some(Source.fromInputStream(c.getInputStream, Option(c.getContentEncoding).getOrElse("UTF-8")).mkString)
+          case c =>
+            val encoding = Option(c.getContentEncoding).getOrElse("UTF-8")
+            val source = Source.fromInputStream(c.getInputStream, encoding)
+            Some(source.mkString)
         } finally connection disconnect()
       }
-
-      val timestamp = ZonedDateTime.now(ZoneOffset.UTC)
 
       for (maybeContent <- eventualMaybeContent)
         yield maybeContent.flatMap(content => {

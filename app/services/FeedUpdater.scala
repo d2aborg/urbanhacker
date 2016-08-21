@@ -1,5 +1,6 @@
 package services
 
+import java.time.ZonedDateTime
 import javax.inject.{Inject, Singleton}
 
 import akka.actor.{ActorRef, ActorSystem}
@@ -9,8 +10,8 @@ import model.FeedSource
 import play.api.Logger
 import play.api.inject.ApplicationLifecycle
 import services.FeedFetcherActor.{FetchFeeds, FullReload}
-
 import model.Utils._
+
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -21,31 +22,32 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
                             lifecycle: ApplicationLifecycle)
                            (implicit exec: ExecutionContext) {
   val refreshCycle = 30.minutes
+  val refreshCycleMinutes = refreshCycle.toMinutes.toInt
   val refreshInterval = 1.minute
-  var eventualFeedSourceBatches: Future[Seq[Seq[FeedSource]]] = _
 
   Logger.info("Scheduling updates...")
 
-  for (x <- 1 to refreshCycle.toMinutes.toInt) {
+  for (x <- 1 to refreshCycleMinutes) {
     actorSystem.scheduler.schedule(refreshInterval * x, refreshCycle) {
-      Logger.info("Running refresh cycle #" + x + "/" + refreshCycle.toMinutes)
+      Logger.info("Running refresh cycle #" + x + "/" + refreshCycleMinutes)
 
-      if (x == 1) {
-        Logger.info("Performing full refresh at cycle 1...")
+      feedStore.loadSources recover { case t =>
+        Logger.warn("Failed to load sources", t)
+        Seq.empty
+      } foreach { sources =>
+        if (x == 1)
+          refreshBacklog(sources)
 
-        val eventualSources = feedStore.loadSources recover { case t =>
-          Logger.warn("Failed to load sources", t)
-          Seq.empty
-        }
+        val now = ZonedDateTime.now
 
-        eventualFeedSourceBatches = eventualSources map batch(refreshCycle.toMinutes.toInt)
+        val outdatedSources = sources.filter(_.timestamp.forall(now > _.plusMinutes(refreshCycleMinutes * 2)))
 
-        eventualSources foreach fullRefresh
-      }
+        val intervalSources = sources
+          .filter(_.timestamp.forall(now > _.plusMinutes(refreshCycleMinutes)))
+          .sortBy(_.timestamp)
+          .take((sources.size + refreshCycleMinutes - 1) / refreshCycleMinutes)
 
-      eventualFeedSourceBatches foreach { feedSourceBatch =>
-        if (feedSourceBatch.size >= x)
-          update(feedSourceBatch(x - 1))
+        update((Set.empty ++ outdatedSources ++ intervalSources).toSeq)
       }
     } tap { reloadTask =>
       lifecycle.addStopHook { () =>
@@ -58,8 +60,8 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
     sources.grouped((sources.size + cycleLength - 1) / cycleLength).toSeq
   }
 
-  def fullRefresh(sources: Seq[FeedSource]): Unit = {
-    Logger.info(s"###> Full refresh of ${sources.size} sources...")
+  def refreshBacklog(sources: Seq[FeedSource]): Unit = {
+    Logger.info(s"###> Refreshing backlog of ${sources.size} sources...")
 
     feedFetcher ! FullReload(sources)
   }

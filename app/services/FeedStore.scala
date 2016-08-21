@@ -29,6 +29,13 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
 
   val pow = SimpleFunction.binary[Double, Double, Double]("POWER")
 
+  def updateSourceTimestamp(source: FeedSource) = db.run {
+    val liveSourceTimestamp = for {
+      liveSource <- sources.filter(_.id === source.id)
+    } yield liveSource.timestamp
+    liveSourceTimestamp.update(source.timestamp)
+  }
+
   def resolvePermalink(section: String, permalink: Option[Permalink]): Future[Option[Permalink]] = {
     Futures.traverse(permalink) { permalink =>
       db.run {
