@@ -79,6 +79,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   }
 
   def loadDownload(downloadId: Long): Future[Option[Download]] = db.run {
+    Logger.info("---> Loading download: " + downloadId)
     downloads.byId(Some(downloadId)).result.headOption
   }
 
