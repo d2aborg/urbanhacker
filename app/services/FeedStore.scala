@@ -111,6 +111,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   }
 
   def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] = db.run {
+    Logger.info("---> Saving feed: " + cachedFeed.source.url)
     feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { numDeletedFeeds =>
       val proposedArticles = cachedFeed.articles.map(_.record)
 
