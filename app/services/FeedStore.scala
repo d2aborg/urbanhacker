@@ -144,11 +144,11 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
 
             (for {
               feedId <- feeds.returningId += cachedFeed.record
-              articleIds <- articles.returningId ++= prunedArticles.map(_.copy(feedId = Some(feedId)))
+              numSavedArticles <- articles ++= prunedArticles.map(_.copy(feedId = Some(feedId)))
             } yield {
-              (feedId, articleIds)
-            }) map { case (feedId, articleIds) =>
-              Logger.info(s"s..> Saved Feed $feedId and ${articleIds.size} Articles for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
+              (feedId, numSavedArticles)
+            }) map { case (feedId, numSavedArticles) =>
+              Logger.info(s"s..> Saved Feed $feedId and $numSavedArticles Articles for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
               Some(feedId)
             }
           }
