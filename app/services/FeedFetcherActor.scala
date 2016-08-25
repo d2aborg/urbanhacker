@@ -76,11 +76,15 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
 
   def downloadSave(sources: Seq[FeedSource]): Future[Seq[Option[(FeedSource, Long, MetaData)]]] =
     Future.traverse(sources) { source =>
-      for {
+      (for {
         maybeLatest <- feedStore.loadLatestMetaData(source)
         maybeDownloaded <- download(source, maybeLatest)
         maybeSaved <- Futures.traverse(maybeDownloaded)(feedStore.saveDownload(source))
-      } yield maybeSaved
+      } yield maybeSaved) recover {
+        case t =>
+          Logger.warn("Failed to download: " + source.url, t)
+          None
+      }
     }
 
   def download(source: FeedSource, previous: Option[MetaData]): Future[Option[Download]] = {
