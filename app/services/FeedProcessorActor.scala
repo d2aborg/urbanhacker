@@ -23,7 +23,7 @@ class FeedProcessorActor @Inject()(feedStore: FeedStore)(implicit exec: Executio
 
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 100, withinTimeRange = 1 minute) {
-      case _ => Restart
+      case _: Throwable => Restart
     }
 
   val feedFetcher = context.actorOf(FeedFetcherActor.props(feedStore))
