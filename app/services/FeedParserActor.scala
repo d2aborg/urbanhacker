@@ -18,7 +18,7 @@ object FeedParserActor {
 class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionContext) extends Actor {
   def receive = {
     case ParseFeed(source: FeedSource, downloadId: Long) =>
-      Await.result(parseSave(source, downloadId).recover {
+      Await.result(parseSave(source, downloadId) recover {
         case t: Throwable =>
           Logger.warn("Failed to parse: " + source.url, t)
           feedStore.deleteUnparsedDownload(source, downloadId)

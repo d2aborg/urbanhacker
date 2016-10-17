@@ -156,6 +156,10 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         }
       }
     } transactionally
+  } recover {
+    case t: Throwable =>
+      Logger.info("Failed to save feed: " + cachedFeed.source.url, t)
+      None
   }
 
   def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
