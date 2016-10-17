@@ -8,25 +8,18 @@ import java.time.{ZoneOffset, ZonedDateTime}
 import javax.net.ssl._
 
 import akka.actor._
-import com.google.inject.Inject
-import com.google.inject.name.Named
 import com.markatta.timeforscala._
 import model.Utils._
 import model._
 import play.api.Logger
-import services.FeedFetcherActor.{FetchFeeds, FullReload}
-import services.FeedParserActor.ParseFeed
+import services.FeedProcessorActor.{FetchFeeds, FullReload, ParseFeed}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.io.Source
 
 object FeedFetcherActor {
-  def props = Props[FeedFetcherActor]
-
-  case class FetchFeeds(sources: Seq[FeedSource])
-
-  case class FullReload(sources: Seq[FeedSource])
+  def props(feedStore: FeedStore)(implicit exec: ExecutionContext) = Props(new FeedFetcherActor(feedStore))
 
   // configure the SSLContext with a permissive TrustManager
   SSLContext.setDefault(SSLContext.getInstance("TLS").tap { ctx =>
@@ -41,9 +34,7 @@ object FeedFetcherActor {
 
 }
 
-class FeedFetcherActor @Inject()(feedStore: FeedStore,
-                                 @Named("feed-parser-actor") feedParser: ActorRef)
-                                (implicit exec: ExecutionContext) extends Actor {
+class FeedFetcherActor(val feedStore: FeedStore)(implicit val exec: ExecutionContext) extends Actor {
   def receive = {
     case FetchFeeds(sources: Seq[FeedSource]) =>
       Await.result(update(sources), 10.minutes)
@@ -54,12 +45,11 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
 
   def update(sources: Seq[FeedSource]): Future[Seq[Long]] =
     for {
-      downloaded <- downloadSave(sources).map {
-        _.flatten.sortBy(_._3.timestamp).map {
-          case (source, downloadId, metaData) => (source, downloadId)
-        }
-      }
-    } yield scheduleParse(downloaded)
+      maybeDownloaded <- downloadSave(sources)
+      downloadedByTimestamp = for {
+        (source, downloadId, metaData) <- maybeDownloaded.flatten.sortBy(_._3.timestamp)
+      } yield (source, downloadId)
+    } yield scheduleParse(downloadedByTimestamp)
 
   def fullReload(sources: Seq[FeedSource]): Future[Seq[Long]] =
     for {
@@ -67,11 +57,11 @@ class FeedFetcherActor @Inject()(feedStore: FeedStore,
     } yield scheduleParse(unparsed)
 
   def scheduleParse(downloads: Seq[(FeedSource, Long)]): Seq[Long] = {
-    (for ((source, downloadId) <- downloads) yield {
-      feedParser ! ParseFeed(source, downloadId); downloadId
-    }) tap { scheduledDownloadIds =>
-      Logger.info(s"Scheduled parsing of ${scheduledDownloadIds.size} downloads...")
+    for ((source, downloadId) <- downloads) {
+      sender ! ParseFeed(source, downloadId)
     }
+    Logger.info(s"Scheduled parsing of ${downloads.size} downloads...")
+    downloads.map(_._2)
   }
 
   def downloadSave(sources: Seq[FeedSource]): Future[Seq[Option[(FeedSource, Long, MetaData)]]] =

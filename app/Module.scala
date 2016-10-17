@@ -2,7 +2,7 @@ import java.time.Clock
 
 import com.google.inject.AbstractModule
 import play.api.libs.concurrent.AkkaGuiceSupport
-import services.{FeedFetcherActor, FeedParserActor, FeedStore, FeedUpdater}
+import services._
 
 /**
  * This class is a Guice module that tells Guice how to bind several
@@ -22,7 +22,6 @@ class Module extends AbstractModule with AkkaGuiceSupport {
     bind(classOf[FeedStore]).asEagerSingleton()
     bind(classOf[FeedUpdater]).asEagerSingleton()
 
-    bindActor[FeedFetcherActor]("feed-fetcher-actor")
-    bindActor[FeedParserActor]("feed-parser-actor")
+    bindActor[FeedProcessorActor]("feed-processor")
   }
 }

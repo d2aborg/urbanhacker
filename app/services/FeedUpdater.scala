@@ -7,10 +7,10 @@ import akka.actor.{ActorRef, ActorSystem}
 import com.google.inject.name.Named
 import com.markatta.timeforscala._
 import model.FeedSource
+import model.Utils._
 import play.api.Logger
 import play.api.inject.ApplicationLifecycle
-import services.FeedFetcherActor.{FetchFeeds, FullReload}
-import model.Utils._
+import services.FeedProcessorActor.{FetchFeeds, FullReload}
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -18,7 +18,7 @@ import scala.concurrent.{ExecutionContext, Future}
 @Singleton
 class FeedUpdater @Inject()(feedStore: FeedStore,
                             actorSystem: ActorSystem,
-                            @Named("feed-fetcher-actor") feedFetcher: ActorRef,
+                            @Named("feed-processor") feedProcessor: ActorRef,
                             lifecycle: ApplicationLifecycle)
                            (implicit exec: ExecutionContext) {
   val refreshCycle = 30.minutes
@@ -63,12 +63,12 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
   def refreshBacklog(sources: Seq[FeedSource]): Unit = {
     Logger.info(s"###> Refreshing backlog of ${sources.size} sources...")
 
-    feedFetcher ! FullReload(sources)
+    feedProcessor ! FullReload(sources)
   }
 
   def update(sources: Seq[FeedSource]): Unit = {
     Logger.info(s"###> Updating ${sources.size} sources...")
 
-    feedFetcher ! FetchFeeds(sources)
+    feedProcessor ! FetchFeeds(sources)
   }
 }
