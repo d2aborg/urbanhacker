@@ -111,7 +111,7 @@ object Article {
     stripText(content, title, feed.title.getOrElse(""))
 
   def stripText(content: NodeSeq, title: String, feedTitle: String): String =
-    content.text.trim.replaceAll("\\s+", " ")
+    content.text.trim.replaceAll("\\p{Cntrl}", " ").replaceAll("\\s+", " ")
       .replaceAll(quote(s" The post $title appeared first on $feedTitle.") + "$", "") // WIRED etc
       .replaceAll(quote(s"$title is a post from $feedTitle") + "$", "") // CSS-Tricks
 
