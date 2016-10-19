@@ -111,52 +111,56 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       .map(_.map(_.metaData))
   }
 
-  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] = db.run {
-    Logger.info("---> Saving feed: " + cachedFeed.source.url)
-    feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { numDeletedFeeds =>
-      val proposedArticles = cachedFeed.articles.map(_.record)
+  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] = try {
+    db.run {
+      Logger.info("---> Saving feed: " + cachedFeed.source.url)
+      feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { numDeletedFeeds =>
+        val proposedArticles = cachedFeed.articles.map(_.record)
 
-      val existingArticles = for {
-        s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
-        f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-        a <- articles if a.feedId === f.id && proposedArticles.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
-      } yield a
+        val existingArticles = for {
+          s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
+          f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+          a <- articles if a.feedId === f.id && proposedArticles.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
+        } yield a
 
-      existingArticles.result.flatMap { existingArticles =>
-        val prunedArticles = proposedArticles
-          .filterNot(pa => existingArticles.exists(xa => xa.link == pa.link ||
-            (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
+        existingArticles.result.flatMap { existingArticles =>
+          val prunedArticles = proposedArticles
+            .filterNot(pa => existingArticles.exists(xa => xa.link == pa.link ||
+              (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
 
-        if (prunedArticles isEmpty) {
-          downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
-            if (numDeleted > 0)
-              Logger.info(s"..x> Deleted download ${cachedFeed.record.downloadId} with no new articles: ${cachedFeed.source.url}")
-            None
-          }
-        } else {
-          val groupPubDates = for {
-            s <- sources.active if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
-            f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-            a <- articles if a.feedId === f.id
-          } yield a.pubDate
+          if (prunedArticles isEmpty) {
+            downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
+              if (numDeleted > 0)
+                Logger.info(s"..x> Deleted download ${cachedFeed.record.downloadId} with no new articles: ${cachedFeed.source.url}")
+              None
+            }
+          } else {
+            val groupPubDates = for {
+              s <- sources.active if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
+              f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+              a <- articles if a.feedId === f.id
+            } yield a.pubDate
 
-          groupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
-            cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ prunedArticles.map(_.pubDate))
+            groupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
+              cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ prunedArticles.map(_.pubDate))
 
-            (for {
-              feedId <- feeds.returningId += cachedFeed.record
-              numSavedArticles <- articles ++= prunedArticles.map(_.copy(feedId = Some(feedId)))
-            } yield {
-              (feedId, numSavedArticles)
-            }) map { case (feedId, numSavedArticles) =>
-              Logger.info(s"s..> Saved Feed $feedId and $numSavedArticles/${prunedArticles.size} Articles for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
-              Some(feedId)
+              for {
+                feedId <- feeds.returningId += cachedFeed.record
+                articleIds <- articles.returningId ++= prunedArticles.map(_.copy(feedId = Some(feedId)))
+              } yield {
+                Logger.info(s"s..> Saved Feed $feedId and ${articleIds.size}/${prunedArticles.size} Articles for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
+                Some(feedId)
+              }
             }
           }
         }
-      }
-    } transactionally
-  } recover {
+      } transactionally
+    } recover {
+      case t: Throwable =>
+        Logger.info("Failed to save feed: " + cachedFeed.source.url, t)
+        None
+    }
+  } catch {
     case t: Throwable =>
       Logger.info("Failed to save feed: " + cachedFeed.source.url, t)
       None
