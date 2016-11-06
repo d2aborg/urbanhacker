@@ -1,14 +1,14 @@
 package model
 
-import com.markatta.timeforscala._
-
 import java.net.URI
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 
+import com.markatta.timeforscala._
 import model.Utils._
 import play.api.Logger
-import services.SlickPgPostgresDriver.api._
+import services.SlickUtil._
+import slick.driver.MySQLDriver.api._
 import slick.lifted.Tag
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
@@ -103,15 +103,15 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
 
   def sourceId = column[Long]("source_id")
 
-  def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
+  def source = foreignKey("feeds_source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
 
   def downloadId = column[Long]("download_id")
 
-  def download = foreignKey("download_fk", downloadId, downloads)(_.id.get, onUpdate = Restrict, onDelete = Cascade)
+  def download = foreignKey("feeds_download_fk", downloadId, downloads)(_.id.get, onUpdate = Restrict, onDelete = Cascade)
 
   def downloadIdIndex = index("feeds_download_id_idx", downloadId, unique = true)
 
-  def siteUrl = column[Option[String]]("site_url")
+  def siteUrl = column[Option[URI]]("site_url")
 
   def title = column[Option[String]]("title")
 
@@ -136,9 +136,9 @@ class FeedsTable(tag: Tag) extends Table[Feed](tag, "feeds") {
   override def * =
     (id, sourceId, downloadId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion).shaped <> ( {
       case (id, sourceId, downloadId, siteUrl, title, (lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion) =>
-        Feed(id, sourceId, downloadId, siteUrl.map(new URI(_)), title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
+        Feed(id, sourceId, downloadId, siteUrl, title, MetaData(lastModified, eTag, checksum, timestamp), frequency, groupFrequency, parseVersion)
     }, { f: Feed =>
-      Some((f.id, f.sourceId, f.downloadId, f.siteUrl.map(_.toString), f.title, (f.metaData.lastModified, f.metaData.eTag,
+      Some((f.id, f.sourceId, f.downloadId, f.siteUrl, f.title, (f.metaData.lastModified, f.metaData.eTag,
         f.metaData.checksum, f.metaData.timestamp), f.frequency, f.groupFrequency, f.parseVersion))
     })
 }

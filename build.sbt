@@ -1,4 +1,4 @@
-name := """urbanhacker"""
+name := "urbanhacker"
 
 version := "1.0-SNAPSHOT"
 
@@ -16,6 +16,7 @@ libraryDependencies ++= Seq(
   "com.optimaize.languagedetector" % "language-detector" % "0.5",
 //  "org.postgresql" % "postgresql" % "9.4.1208", -- can't use due to bug in SQL driver
   "org.postgresql" % "postgresql" % "9.4-1201-jdbc41",
+  "mysql" % "mysql-connector-java" % "6.0.5",
   "com.typesafe.play" %% "play-slick" % "2.0.0",
   "com.typesafe.play" %% "play-slick-evolutions" % "2.0.0",
   "com.zaxxer" % "HikariCP" % "2.4.5",

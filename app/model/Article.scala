@@ -15,7 +15,8 @@ import com.markatta.timeforscala._
 import model.Utils._
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
-import services.SlickPgPostgresDriver.api._
+import services.SlickUtil._
+import slick.driver.MySQLDriver.api._
 import slick.lifted.{TableQuery, Tag}
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
@@ -225,31 +226,30 @@ class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
 
   def sourceId = column[Long]("source_id")
 
-  def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
+  def source = foreignKey("articles_source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
 
   def feedId = column[Option[Long]]("feed_id")
 
-  def feed = foreignKey("feed_fk", feedId, feeds)(_.id, onUpdate = Restrict, onDelete = Cascade)
+  def feed = foreignKey("articles_feed_fk", feedId, feeds)(_.id, onUpdate = Restrict, onDelete = Cascade)
 
-  def title = column[String]("title")
+  def title = column[String]("title", O.SqlType("varchar(1000)"))
 
-  def link = column[String]("link")
+  def link = column[URI]("link", O.SqlType("varchar(1000)"))
 
-  def commentsLink = column[Option[String]]("comments_link")
+  def commentsLink = column[Option[URI]]("comments_link")
 
   def pubDate = column[ZonedDateTime]("pub_date")
 
-  def imageSource = column[Option[String]]("image_source")
+  def imageSource = column[Option[URI]]("image_source")
 
   def text = column[String]("text")
 
   override def * =
     (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text).shaped <> ( {
       case (id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text) =>
-        Article(id, sourceId, feedId, title, new URI(link), commentsLink.map(new URI(_)), pubDate, imageSource.map(new URI(_)), text)
+        Article(id, sourceId, feedId, title, link, commentsLink, pubDate, imageSource, text)
     }, { a: Article =>
-      Some((a.id, a.sourceId, a.feedId, a.title, a.link.toString, a.commentsLink.map(_.toString), a.pubDate,
-        a.imageSource.map(_.toString), a.text))
+      Some((a.id, a.sourceId, a.feedId, a.title, a.link, a.commentsLink, a.pubDate, a.imageSource, a.text))
     })
 
   def linkIndex = index("articles_link_idx", link)
@@ -264,7 +264,7 @@ object articles extends TableQuery(new ArticlesTable(_)) {
 
   def newerThan(section: String,
                 historicTimestamp: ZonedDateTime,
-                link: Rep[String],
+                link: Rep[URI],
                 pubDate: Rep[ZonedDateTime],
                 feedTimestamp: Rep[ZonedDateTime]): Query[ArticlesTable, Article, Seq] =
     for {
