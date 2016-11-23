@@ -1,6 +1,6 @@
 package services
 
-import java.io.StringReader
+import java.io.{ByteArrayInputStream, InputStreamReader, StringReader}
 
 import akka.actor._
 import model.{Feed, _}
@@ -36,7 +36,7 @@ class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionCont
 
   def parse(source: FeedSource)(download: Download): Future[Option[CachedFeed]] = Future {
     Logger.info("---> Parsing feed: " + source.url)
-    val xml = XML.load(new StringReader(download.content))
+    val xml = XML.load(new InputStreamReader(new ByteArrayInputStream(download.content), download.encoding.getOrElse("UTF-8")))
     val parsedDownload = ParsedDownload(download, xml)
     Feed.parse(source, parsedDownload)
   }

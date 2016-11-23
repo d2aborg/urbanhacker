@@ -56,10 +56,6 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
     }
   }
 
-  def batch(cycleLength: Int)(sources: Seq[FeedSource]): Seq[Seq[FeedSource]] = {
-    sources.grouped((sources.size + cycleLength - 1) / cycleLength).toSeq
-  }
-
   def refreshBacklog(sources: Seq[FeedSource]): Unit = {
     Logger.info(s"###> Refreshing backlog of ${sources.size} sources...")
 

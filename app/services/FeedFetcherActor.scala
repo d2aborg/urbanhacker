@@ -103,34 +103,37 @@ class FeedFetcherActor(val feedStore: FeedStore)(implicit val exec: ExecutionCon
           connection setRequestProperty("If-Modified-Since", lastModified)
       }
 
-      val eventualMaybeContent = Future {
+      val eventualMaybeContentAndEncoding = Future {
         try connection.tap(_.connect()) match {
           case c if c.getResponseCode == 304 => None
           case c =>
-            val encoding = Option(c.getContentEncoding).getOrElse("UTF-8")
-            val source = Source.fromInputStream(c.getInputStream, encoding)
-            Some(source.mkString)
+            val encoding = Option(c.getContentEncoding)
+            val is = c.getInputStream
+            val bytes = Stream.continually(is.read).takeWhile(_ != -1).map(_.toByte).toArray
+            Some(bytes, encoding)
         } finally connection disconnect()
       }
 
-      for (maybeContent <- eventualMaybeContent)
-        yield maybeContent.flatMap(content => {
-          val checksum = md5(content)
-          if (previous.map(_.checksum).contains(checksum))
-            None
-          else {
-            Some(Download(None, source.id, MetaData(
-              Option(connection getHeaderField "Last-Modified"),
-              Option(connection getHeaderField "ETag"),
-              checksum, timestamp), content))
-          }
-        })
+      for (maybeContentAndEncoding <- eventualMaybeContentAndEncoding)
+        yield maybeContentAndEncoding.flatMap {
+          case (content, encoding) =>
+            val checksum = md5(content)
+            if (previous.map(_.checksum).contains(checksum))
+              None
+            else
+              Some(Download(None, source.id, MetaData(
+                Option(connection getHeaderField "Last-Modified"),
+                Option(connection getHeaderField "ETag"),
+                checksum, timestamp), content, encoding))
+        }
     } catch {
       case e: Exception =>
         Future.failed(e)
     }
   }
 
-  def md5(data: String): String =
-    MessageDigest.getInstance("MD5").digest(data.getBytes("UTF-8")).map("%02x".format(_)).mkString
+  def md5(data: String): String = md5(data.getBytes("UTF-8"))
+
+  def md5(data: Array[Byte]): String =
+    MessageDigest.getInstance("MD5").digest(data).map("%02x".format(_)).mkString
 }
