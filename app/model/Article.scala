@@ -21,6 +21,7 @@ import slick.lifted.{TableQuery, Tag}
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
 import scala.math.max
+import scala.util.Try
 import scala.xml._
 import scala.xml.parsing.NoBindingFactoryAdapter
 
@@ -145,23 +146,8 @@ object Article {
     Some(Article(None, source.id, feed.id, title, new URI(link), commentsLink.map(new URI(_)), date.right get, maybeImgSrc, strippedText)) filter isEnglish
   }
 
-  def tooSmall(img: Node): Boolean = {
-    try {
-      if ((img \@ "width").toInt <= 20)
-        return true
-    } catch {
-      case e: NumberFormatException =>
-    }
-
-    try {
-      if ((img \@ "height").toInt <= 20)
-        return true
-    } catch {
-      case e: NumberFormatException =>
-    }
-
-    false
-  }
+  def tooSmall(img: Node): Boolean =
+    Try((img \@ "width").toInt).toOption.exists(_ <= 20) || Try((img \@ "height").toInt).toOption.exists(_ <= 20)
 
   def imageSource(content: NodeSeq, link: String): Option[URI] = {
     val bannedImgSrcs = List(
@@ -178,7 +164,7 @@ object Article {
         Some(new URI(link).resolve(src))
       } catch {
         case t: Throwable =>
-          Logger.warn("Failed to resolve image '" + src + "' against URL: '" + link + "'")
+          Logger.warn("Failed to resolve image '" + src + "' against URL: '" + link + "'", t)
           None
       }
     }

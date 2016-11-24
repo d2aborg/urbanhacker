@@ -1,8 +1,9 @@
 package services
 
-import java.io.{ByteArrayInputStream, InputStreamReader, StringReader}
+import java.io._
 
 import akka.actor._
+import com.ibm.icu.text.{CharsetDetector, CharsetMatch}
 import model.{Feed, _}
 import play.api.Logger
 import services.FeedProcessorActor.ParseFeed
@@ -36,8 +37,16 @@ class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionCont
 
   def parse(source: FeedSource)(download: Download): Future[Option[CachedFeed]] = Future {
     Logger.info("---> Parsing feed: " + source.url)
-    val xml = XML.load(new InputStreamReader(new ByteArrayInputStream(download.content), download.encoding.getOrElse("UTF-8")))
+    val xml = XML.load(
+      new InputStreamReader(new ByteArrayInputStream(download.content), download.encoding.getOrElse(guessEncoding(download.content))))
     val parsedDownload = ParsedDownload(download, xml)
     Feed.parse(source, parsedDownload)
+  }
+
+  def guessEncoding(data: Array[Byte]): String = {
+    val charsetDetector = new CharsetDetector()
+    charsetDetector.setText(data)
+    charsetDetector.enableInputFilter(true)
+    charsetDetector.detect.getName
   }
 }
