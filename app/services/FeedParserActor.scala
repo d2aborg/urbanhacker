@@ -3,7 +3,7 @@ package services
 import java.io._
 
 import akka.actor._
-import com.ibm.icu.text.{CharsetDetector, CharsetMatch}
+import com.ibm.icu.text.CharsetDetector
 import model.{Feed, _}
 import play.api.Logger
 import services.FeedProcessorActor.ParseFeed
@@ -17,7 +17,7 @@ object FeedParserActor {
 }
 
 class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionContext) extends Actor {
-  def receive = {
+  def receive: PartialFunction[Any, Unit] = {
     case ParseFeed(source: FeedSource, downloadId: Long) =>
       Await.result(parseSave(source, downloadId) recover {
         case t: Throwable =>
