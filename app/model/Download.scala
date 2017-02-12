@@ -2,8 +2,7 @@ package model
 
 import java.time.ZonedDateTime
 
-import services.SlickUtil._
-import slick.driver.MySQLDriver.api._
+import services.SlickPgPostgresDriver.api._
 import slick.lifted.Tag
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
@@ -21,7 +20,7 @@ class DownloadsTable(tag: Tag) extends Table[Download](tag, "downloads") {
 
   def sourceId = column[Long]("source_id")
 
-  def source = foreignKey("downloads_source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
+  def source = foreignKey("source_fk", sourceId, sources)(_.id, onUpdate = Restrict, onDelete = Cascade)
 
   def lastModified = column[Option[String]]("last_modified")
 

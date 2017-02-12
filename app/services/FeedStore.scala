@@ -1,17 +1,16 @@
 package services
 
-import java.time.ZonedDateTime
+import java.time.{Duration, ZonedDateTime}
 
 import com.google.inject.{Inject, Singleton}
 import model.Utils._
 import model._
 import play.api.db.slick.DatabaseConfigProvider
 import play.api.{Environment, Logger}
-import services.SlickUtil._
+import services.SlickPgPostgresDriver.api._
 import slick.dbio.DBIOAction
 import slick.dbio.Effect.Read
 import slick.driver.JdbcProfile
-import slick.driver.MySQLDriver.api._
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -20,17 +19,21 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   val db = dbConfigProvider.get[JdbcProfile].db
 
   Logger.info("Schemas:\n" +
-    (sources.schema ++ downloads.schema ++ feeds.schema ++ articles.schema).create.statements.mkString("\n"))
+    (downloads.schema ++ sources.schema ++ feeds.schema ++ articles.schema).create.statements.mkString("\n"))
 
-  val unixTimestamp = SimpleFunction.unary[ZonedDateTime, Long]("UNIX_TIMESTAMP")
+  val extractEpoch = SimpleExpression.unary[Duration, Long] { (zdt, qb) =>
+    qb.sqlBuilder += "EXTRACT(EPOCH FROM "
+    qb.expr(zdt)
+    qb.sqlBuilder += ")"
+  }
 
-  val power = SimpleFunction.binary[Double, Double, Double]("POWER")
+  val pow = SimpleFunction.binary[Double, Double, Double]("POWER")
 
   def updateSourceTimestamp(source: FeedSource) = db.run {
-    val oldSourceTimestamp = for {
-      oldSource <- sources.filter(_.id === source.id)
-    } yield oldSource.timestamp
-    oldSourceTimestamp.update(source.timestamp)
+    val liveSourceTimestamp = for {
+      liveSource <- sources.filter(_.id === source.id)
+    } yield liveSource.timestamp
+    liveSourceTimestamp.update(source.timestamp)
   }
 
   def resolvePermalink(section: String, permalink: Option[Permalink]): Future[Option[Permalink]] = {
@@ -60,9 +63,8 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         val limit = searchPermalink.pageSize + 1 // one extra for next page detection
 
         val articlePage = articlesWithSourceAndFeed sortBy { case (s, f, a) =>
-          val ageMillis = unixTimestamp(resolvedTimestamp.bind) - unixTimestamp(a.pubDate)
-          val ageSeconds = ageMillis.asColumnOf[Double] / 1000.0
-          power(ageSeconds, 3.0.bind) * f.groupFrequency
+          val ageSeconds = extractEpoch(resolvedTimestamp.bind - a.pubDate).asColumnOf[Double] / 1000.0
+          pow(ageSeconds, 3.0.bind) * f.groupFrequency
         } drop offset take limit
 
         articlePage.result.map(_.map(CachedArticle.tupled)).map { as =>
@@ -116,9 +118,9 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         val proposedArticles = cachedFeed.articles.map(_.record)
 
         val existingArticles = for {
-          s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url) || (s.group.isDefined && s.group === cachedFeed.source.group)
+          s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
           f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-          a <- articles if a.feedId === f.id && proposedArticles.map(pa => a.link === pa.link || a.title === pa.title).foldLeft(false.bind)(_ || _)
+          a <- articles if a.feedId === f.id && proposedArticles.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
         } yield a
 
         existingArticles.result.flatMap { existingArticles =>
@@ -134,7 +136,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
             }
           } else {
             val groupPubDates = for {
-              s <- sources.active if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url)(group => s.group === group)
+              s <- sources.active if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
               f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
               a <- articles if a.feedId === f.id
             } yield a.pubDate

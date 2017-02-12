@@ -16,7 +16,6 @@ import services.FeedProcessorActor.{FetchFeeds, FullReload, ParseFeed}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.io.Source
 
 object FeedFetcherActor {
   def props(feedStore: FeedStore)(implicit exec: ExecutionContext) = Props(new FeedFetcherActor(feedStore))

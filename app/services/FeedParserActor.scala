@@ -17,7 +17,7 @@ object FeedParserActor {
 }
 
 class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionContext) extends Actor {
-  def receive: PartialFunction[Any, Unit] = {
+  def receive = {
     case ParseFeed(source: FeedSource, downloadId: Long) =>
       Await.result(parseSave(source, downloadId) recover {
         case t: Throwable =>
