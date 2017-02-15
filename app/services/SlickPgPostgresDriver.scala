@@ -2,10 +2,10 @@ package services
 
 import com.github.tminglei.slickpg._
 import play.api.libs.json.{JsValue, Json}
-import slick.driver.JdbcProfile
-import slick.profile.Capability
+import slick.basic.Capability
+import slick.jdbc.JdbcCapabilities
 
-trait SlickPgPostgresDriver extends ExPostgresDriver
+trait SlickPgPostgresDriver extends ExPostgresProfile
   with PgArraySupport
   with PgDateSupport
   with PgDate2Support
@@ -18,7 +18,7 @@ trait SlickPgPostgresDriver extends ExPostgresDriver
 
   // Add back `capabilities.insertOrUpdate` to enable native `upsert` support; for postgres 9.5+
   override protected def computeCapabilities: Set[Capability] =
-    super.computeCapabilities + JdbcProfile.capabilities.insertOrUpdate
+    super.computeCapabilities + JdbcCapabilities.insertOrUpdate
 
   override val api = SlickPgAPI
 

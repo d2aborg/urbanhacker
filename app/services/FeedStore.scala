@@ -10,7 +10,7 @@ import play.api.{Environment, Logger}
 import services.SlickPgPostgresDriver.api._
 import slick.dbio.DBIOAction
 import slick.dbio.Effect.Read
-import slick.driver.JdbcProfile
+import slick.jdbc.JdbcProfile
 
 import scala.concurrent.{ExecutionContext, Future}
 
