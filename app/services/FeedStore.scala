@@ -117,13 +117,17 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { numDeletedFeeds =>
         val proposedArticles = cachedFeed.articles.map(_.record)
 
-        val existingArticles = for {
-          s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
-          f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-          a <- articles if a.feedId === f.id && proposedArticles.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
-        } yield a
+        val existingArticles = DBIO.sequence {
+          for (proposedArticleGroup <- proposedArticles.grouped(100)) yield {
+            for {
+              s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
+              f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+              a <- articles if a.feedId === f.id && proposedArticleGroup.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
+            } yield a
+          } result
+        } map { _.flatten }
 
-        existingArticles.result.flatMap { existingArticles =>
+        existingArticles.flatMap { existingArticles =>
           val prunedArticles = proposedArticles
             .filterNot(pa => existingArticles.exists(xa => xa.link == pa.link ||
               (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
