@@ -20,7 +20,7 @@ import scala.concurrent.{ExecutionContext, Future}
 class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environment)(implicit exec: ExecutionContext) {
   val db = dbConfigProvider.get[JdbcProfile].db
 
-  Logger.info("Schemas:\n" +
+  Logger.debug("Schemas:\n" +
     (downloads.schema ++ sources.schema ++ feeds.schema ++ articles.schema).create.statements.mkString("\n"))
 
   val extractEpoch = SimpleExpression.unary[Duration, Long] { (zdt, qb) =>
@@ -81,7 +81,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   }
 
   def loadDownload(source: FeedSource, downloadId: Long): Future[Option[Download]] = db.run {
-    Logger.debug(s"${source.url}: Loading download: " + downloadId)
+    Logger.trace(s"${source.url}: Loading download: " + downloadId)
     downloads.byId(Some(downloadId)).result.headOption
   }
 
@@ -133,7 +133,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
               if (numDeletedSimilarArticles > 0)
                 Logger.debug(s"${cachedFeed.source.url}: Deleted $numDeletedSimilarArticles similar articles")
 
-              Logger.debug(s"${cachedFeed.source.url}: Saving feed for Download ${cachedFeed.record.downloadId}")
+              Logger.trace(s"${cachedFeed.source.url}: Saving feed for Download ${cachedFeed.record.downloadId}")
 
               Logger.debug(s"${cachedFeed.source.url}: ${allArticles.size} articles: ${allArticles.map(_.title)}")
               Logger.debug(s"${cachedFeed.source.url}: ${similarArticles.size} similar articles: ${similarArticles.map(_.title)}")

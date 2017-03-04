@@ -36,7 +36,7 @@ class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionCont
   }
 
   def parse(source: FeedSource)(download: Download): Future[Option[CachedFeed]] = Future {
-    Logger.debug(s"${source.url}: Parsing Download: ${download.id}")
+    Logger.trace(s"${source.url}: Parsing Download: ${download.id}")
     val xml = XML.load(
       new InputStreamReader(new ByteArrayInputStream(download.content), download.encoding.getOrElse(guessEncoding(download.content))))
     val parsedDownload = ParsedDownload(download, xml)

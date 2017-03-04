@@ -71,7 +71,7 @@ class FeedFetcherActor(val feedStore: FeedStore)(implicit val exec: ExecutionCon
         maybeSaved <- Futures.traverse(maybeDownloaded)(feedStore.saveDownload(source))
       } yield maybeSaved) recover {
         case t =>
-          Logger.warn(s"XXX> ${source.url}: Failed to download feed", t)
+          Logger.warn(s"${source.url}: Failed to download feed", t)
           None
       }
     }
