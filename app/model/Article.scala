@@ -54,6 +54,10 @@ case class Article(id: Option[Long], sourceId: Long, feedId: Option[Long], title
   val maxSummaryLength = 250
 
   def croppedText: String = crop(text, maxSummaryLength)
+
+  def same(a: Article): Boolean = {
+    link == a.link || (title == a.title && imageSource == a.imageSource && text == a.text)
+  }
 }
 
 object Article {

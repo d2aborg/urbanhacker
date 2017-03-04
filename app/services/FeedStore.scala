@@ -115,44 +115,48 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     db.run {
       Logger.info("---> Saving feed: " + cachedFeed.source.url)
       feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { numDeletedFeeds =>
-        val proposedArticles = cachedFeed.articles.map(_.record)
+        val allArticles = cachedFeed.articles.map(_.record)
 
         val existingArticles = DBIO.sequence {
-          for (proposedArticleGroup <- proposedArticles.grouped(100)) yield {
+          for (allArticlesGroup <- allArticles.grouped(100).toSeq) yield {
             for {
               s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
               f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-              a <- articles if a.feedId === f.id && proposedArticleGroup.map(pa => a.link === pa.link.toString || a.title === pa.title).foldLeft(false.bind)(_ || _)
+              a <- articles if a.feedId === f.id &&
+              allArticlesGroup.map(ga => a.link === ga.link.toString || a.title === ga.title).reduce(_ || _)
             } yield a
           } result
-        } map { _.flatten }
+        } map { _.flatten.toSet }
 
         existingArticles.flatMap { existingArticles =>
-          val prunedArticles = proposedArticles
-            .filterNot(pa => existingArticles.exists(xa => xa.link == pa.link ||
-              (xa.title == pa.title && xa.imageSource == pa.imageSource && xa.text == pa.text)))
+          val newArticles = allArticles.filterNot(a => existingArticles.exists(a.same))
 
-          if (prunedArticles isEmpty) {
+          Logger.info("All articles: " + allArticles.map(_.title))
+          Logger.info("New articles: " + newArticles.map(_.title))
+          Logger.info("Existing articles: " + existingArticles.map(_.title))
+
+          if (newArticles isEmpty) {
             downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
               if (numDeleted > 0)
                 Logger.info(s"..x> Deleted download ${cachedFeed.record.downloadId} with no new articles: ${cachedFeed.source.url}")
               None
             }
           } else {
-            val groupPubDates = for {
+            val sourceGroupPubDates = for {
               s <- sources.active if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
               f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
               a <- articles if a.feedId === f.id
             } yield a.pubDate
 
-            groupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
-              cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ prunedArticles.map(_.pubDate))
+            sourceGroupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
+              cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ newArticles.map(_.pubDate))
 
               for {
                 feedId <- feeds.returningId += cachedFeed.record
-                articleIds <- articles.returningId ++= prunedArticles.map(_.copy(feedId = Some(feedId)))
+                articleIds <- articles.returningId ++= newArticles.map(_.copy(feedId = Some(feedId)))
               } yield {
-                Logger.info(s"s..> Saved Feed $feedId and ${articleIds.size}/${prunedArticles.size} Articles for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
+                Logger.info(s"s..> Saved Feed $feedId and ${articleIds.size}/${newArticles.size} Articles for " +
+                  s"Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
                 Some(feedId)
               }
             }
