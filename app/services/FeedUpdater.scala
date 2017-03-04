@@ -57,13 +57,13 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
   }
 
   def refreshBacklog(sources: Seq[FeedSource]): Unit = {
-    Logger.info(s"###> Refreshing backlog of ${sources.size} sources...")
+    Logger.info(s"Refreshing backlog of ${sources.size} sources...")
 
     feedProcessor ! FullReload(sources)
   }
 
   def update(sources: Seq[FeedSource]): Unit = {
-    Logger.info(s"###> Updating ${sources.size} sources...")
+    Logger.info(s"Updating ${sources.size} sources...")
 
     feedProcessor ! FetchFeeds(sources)
   }

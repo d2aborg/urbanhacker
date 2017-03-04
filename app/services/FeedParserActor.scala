@@ -29,14 +29,14 @@ class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionCont
 
   def parseSave(source: FeedSource, downloadId: Long): Future[Option[Long]] = {
     for {
-      maybeLoaded <- feedStore.loadDownload(downloadId)
+      maybeLoaded <- feedStore.loadDownload(source, downloadId)
       maybeParsed <- Futures.traverse(maybeLoaded)(parse(source)).map(_.flatten)
       maybeSaved <- Futures.traverse(maybeParsed)(feedStore.saveCachedFeed).map(_.flatten)
     } yield maybeSaved
   }
 
   def parse(source: FeedSource)(download: Download): Future[Option[CachedFeed]] = Future {
-    Logger.info(s"---> ${source.url}: Parsing Download: ${download.id}")
+    Logger.debug(s"${source.url}: Parsing Download: ${download.id}")
     val xml = XML.load(
       new InputStreamReader(new ByteArrayInputStream(download.content), download.encoding.getOrElse(guessEncoding(download.content))))
     val parsedDownload = ParsedDownload(download, xml)

@@ -9,7 +9,7 @@ import play.api.db.slick.DatabaseConfigProvider
 import play.api.{Environment, Logger}
 import services.SlickPgPostgresDriver.api._
 import slick.dbio.DBIOAction
-import slick.dbio.Effect.Read
+import slick.dbio.Effect.{Read, Write}
 import slick.jdbc.JdbcProfile
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -78,8 +78,8 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     }
   }
 
-  def loadDownload(downloadId: Long): Future[Option[Download]] = db.run {
-    Logger.info("---> Loading download: " + downloadId)
+  def loadDownload(source: FeedSource, downloadId: Long): Future[Option[Download]] = db.run {
+    Logger.debug(s"${source.url}: Loading download: " + downloadId)
     downloads.byId(Some(downloadId)).result.headOption
   }
 
@@ -90,7 +90,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     } yield (source, download)).sortBy(_._2.timestamp).map(sd => (sd._1, sd._2.id.get)).result
   } tap { eventualDownloadIdsBySource =>
     for (downloadIdsBySource <- eventualDownloadIdsBySource if downloadIdsBySource.nonEmpty)
-      Logger.info(s".l.> Loaded Ids of ${downloadIdsBySource.size} Unparsed or Out of Version Downloads: ${sourceGroup.map(_.url)}")
+      Logger.info(s"Loaded Ids of ${downloadIdsBySource.size} Unparsed or Out of Version Downloads: ${sourceGroup.map(_.url)}")
   }
 
   def saveDownload(source: FeedSource)(download: Download): Future[(FeedSource, Long, MetaData)] = db.run {
@@ -99,7 +99,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     }
   } tap { eventualSaved =>
     for ((source, id, metaData) <- eventualSaved)
-      Logger.info(s"s..> ${source.url}: Saved Download $id")
+      Logger.info(s"${source.url}: Saved Download $id")
   }
 
   def loadLatestMetaData(source: FeedSource): Future[Option[MetaData]] = db.run {
@@ -111,54 +111,25 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       .map(_.map(_.metaData))
   }
 
-  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] = try {
+  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] =
     db.run {
-      Logger.info(s"---> ${cachedFeed.source.url}: Saving feed")
-      feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { numDeletedFeeds =>
+      feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { _ =>
         val allArticles = cachedFeed.articles.map(_.record)
 
-        val existingArticles = DBIO.sequence {
-          for (allArticlesGroup <- allArticles.grouped(100).toSeq) yield {
-            for {
-              s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
-              f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-              a <- articles if a.feedId === f.id &&
-              allArticlesGroup.map(ga => a.link === ga.link.toString || a.title === ga.title).reduce(_ || _)
-            } yield a
-          } result
-        } map { _.flatten.toSet }
-
-        existingArticles.flatMap { existingArticles =>
+        findExistingArticlesAction(cachedFeed, allArticles).flatMap { existingArticles =>
           val newArticles = allArticles.filterNot(a => existingArticles.exists(a.same))
 
-          Logger.info(s"---> ${cachedFeed.source.url}: All articles: ${allArticles.map(_.title)}")
-          Logger.info(s"---> ${cachedFeed.source.url}: Existing articles: ${existingArticles.map(_.title)}")
-          Logger.info(s"---> ${cachedFeed.source.url}: New articles: ${newArticles.map(_.title)}")
-
           if (newArticles isEmpty) {
-            downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
-              if (numDeleted > 0)
-                Logger.info(s"..x> ${cachedFeed.source.url}: " +
-                  s"Deleted download ${cachedFeed.record.downloadId} with no new articles")
-              None
-            }
+            deleteCachedFeedAction(cachedFeed).map(_ => None)
           } else {
-            val sourceGroupPubDates = for {
-              s <- sources.active if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
-              f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-              a <- articles if a.feedId === f.id
-            } yield a.pubDate
+            Logger.debug(s"${cachedFeed.source.url}: Saving feed for Download ${cachedFeed.record.downloadId}")
 
-            sourceGroupPubDates.sortBy(_.desc).take(10).result.flatMap { latestGroupPubDates =>
-              cachedFeed.record.groupFrequency = Feed.frequency(latestGroupPubDates ++ newArticles.map(_.pubDate))
+            Logger.debug(s"${cachedFeed.source.url}: ${allArticles.size} articles: ${allArticles.map(_.title)}")
+            Logger.debug(s"${cachedFeed.source.url}: ${existingArticles.size} existing articles: ${existingArticles.map(_.title)}")
+            Logger.debug(s"${cachedFeed.source.url}: ${newArticles.size} new articles: ${newArticles.map(_.title)}")
 
-              for {
-                feedId <- feeds.returningId += cachedFeed.record
-                articleIds <- articles.returningId ++= newArticles.map(_.copy(feedId = Some(feedId)))
-              } yield {
-                Logger.info(s"s..> ${cachedFeed.source.url}: " +
-                  s"Saved Feed $feedId and ${articleIds.size}/${newArticles.size} Articles for " +
-                  s"Download ${cachedFeed.record.downloadId}")
+            sourceGroupTopTenPubDatesAction(cachedFeed).flatMap {
+              saveCachedFeedAction(cachedFeed, newArticles, _).map { case (feedId, _) =>
                 Some(feedId)
               }
             }
@@ -167,18 +138,69 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       } transactionally
     } recover {
       case t: Throwable =>
-        Logger.info(s"XXX> ${cachedFeed.source.url}: Failed to save feed", t)
+        Logger.warn(s"${cachedFeed.source.url}: Failed to save feed for Download ${cachedFeed.record.downloadId}", t)
         None
     }
-  } catch {
-    case t: Throwable =>
-      Logger.info(s"XXX> ${cachedFeed.source.url}: Failed to save feed", t)
-      Future.failed(t)
+
+  private def saveCachedFeedAction(cachedFeed: CachedFeed, newArticles: Seq[Article], topTenGroupPubDates: Seq[ZonedDateTime]): DBIOAction[(Long, Seq[Long]), NoStream, Write] = {
+    cachedFeed.record.groupFrequency = Feed.frequency(topTenGroupPubDates ++ newArticles.map(_.pubDate))
+
+    saveCachedFeedAction(cachedFeed, newArticles)
+  }
+
+  private def saveCachedFeedAction(cachedFeed: CachedFeed, newArticles: Seq[Article]): DBIOAction[(Long, Seq[Long]), NoStream, Write] = {
+    for {
+      feedId <- feeds.returningId += cachedFeed.record
+      articleIds <- articles.returningId ++= newArticles.map(_.copy(feedId = Some(feedId)))
+    } yield {
+      Logger.info(s"${cachedFeed.source.url}: " +
+        s"Saved Feed $feedId and ${articleIds.size}/${newArticles.size} Articles for " +
+        s"Download ${cachedFeed.record.downloadId}")
+
+      (feedId, articleIds)
+    }
+  }
+
+  private def sourceGroupTopTenPubDatesAction(cachedFeed: CachedFeed) = {
+    sourceGroupPubDatesAction(cachedFeed).sortBy(_.desc).take(10).result
+  }
+
+  private def sourceGroupPubDatesAction(cachedFeed: CachedFeed) = {
+    for {
+      s <- sources.active if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
+      f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+      a <- articles if a.feedId === f.id
+    } yield a.pubDate
+  }
+
+  private def deleteCachedFeedAction(cachedFeed: CachedFeed): DBIOAction[Int, NoStream, Write] = {
+    downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
+      if (numDeleted > 0)
+        Logger.debug(s"${cachedFeed.source.url}: " +
+          s"Deleted download ${cachedFeed.record.downloadId} with no new articles")
+
+      numDeleted
+    }
+  }
+
+  private def findExistingArticlesAction(cachedFeed: CachedFeed, allArticles: Seq[Article]) = {
+    DBIO.sequence {
+      for (allArticlesGroup <- allArticles.grouped(100).toSeq) yield {
+        for {
+          s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
+          f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+          a <- articles if a.feedId === f.id &&
+          allArticlesGroup.map(ga => a.link === ga.link.toString || a.title === ga.title).reduce(_ || _)
+        } yield a
+      } result
+    } map {
+      _.flatten.toSet
+    }
   }
 
   def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
     downloads.byId(Some(downloadId)).delete map { numDeleted =>
-      if (numDeleted > 0) Logger.info(s"..x> ${source.url}: Deleted unparseable download $downloadId")
+      if (numDeleted > 0) Logger.warn(s"${source.url}: Deleted unparseable download $downloadId")
       numDeleted > 0
     }
   }

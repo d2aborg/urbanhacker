@@ -74,7 +74,7 @@ object Feed {
     } \@ "href").map(new URI(_))
 
     if (siteUrl isEmpty)
-      Logger.info("Found no viable link in feed: " + title + ", among: " + (feedRoot \ "link"))
+      Logger.warn("Found no viable link in feed: " + title + ", among: " + (feedRoot \ "link"))
 
     Feed(None, source.id, download.record.id.get, source.siteUrl.orElse(siteUrl), source.title.orElse(title), download.record.metaData)
   }
