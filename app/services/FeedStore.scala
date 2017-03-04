@@ -132,8 +132,8 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
           val newArticles = allArticles.filterNot(a => existingArticles.exists(a.same))
 
           Logger.info("All articles: " + allArticles.map(_.title))
-          Logger.info("New articles: " + newArticles.map(_.title))
           Logger.info("Existing articles: " + existingArticles.map(_.title))
+          Logger.info("New articles: " + newArticles.map(_.title))
 
           if (newArticles isEmpty) {
             downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
