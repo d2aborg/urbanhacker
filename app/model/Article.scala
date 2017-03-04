@@ -6,17 +6,18 @@ import java.time._
 import java.time.temporal.ChronoUnit
 import java.util.regex.Pattern.quote
 
+import com.markatta.timeforscala._
 import com.optimaize.langdetect.i18n.LdLocale
 import com.optimaize.langdetect.ngram.NgramExtractors
 import com.optimaize.langdetect.profiles.LanguageProfileReader
 import com.optimaize.langdetect.text.{CommonTextObjectFactories, TextObjectFactory}
 import com.optimaize.langdetect.{LanguageDetector, LanguageDetectorBuilder}
-import com.markatta.timeforscala._
+import model.Article.{languageDetector, textObjectFactory}
 import model.Utils._
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
 import services.SlickPgPostgresDriver.api._
-import slick.lifted.{TableQuery, Tag}
+import slick.lifted.{QueryBase, TableQuery, Tag}
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
 import scala.math.max
@@ -55,25 +56,32 @@ case class Article(id: Option[Long], sourceId: Long, feedId: Option[Long], title
 
   def croppedText: String = crop(text, maxSummaryLength)
 
-  def same(a: Article): Boolean = {
-    link == a.link || (title == a.title && imageSource == a.imageSource && text == a.text)
+  def same(a: Article): Boolean = link == a.link || (title == a.title && imageSource == a.imageSource && text == a.text)
+
+  def similar(a: Article): Boolean = link == a.link || title == a.title
+
+  def isEnglish: Boolean = {
+    text.isEmpty || {
+      val titleAndText = title + ": " + text
+      val lang = languageDetector.detect(textObjectFactory.forText(titleAndText))
+      !lang.isPresent || lang.asSet.contains(LdLocale.fromString("en"))
+    }
   }
 }
 
 object Article {
+  def nonSimilar(articlez: List[Article]): List[Article] = {
+    articlez match {
+      case Nil => Nil
+      case head :: tail => head :: nonSimilar(tail.filterNot(head.similar))
+    }
+  }
+
   val languageDetector: LanguageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard)
     .withProfiles(new LanguageProfileReader().readAllBuiltIn)
     .build
 
   val textObjectFactory: TextObjectFactory = CommonTextObjectFactories.forDetectingShortCleanText()
-
-  def isEnglish(article: Article): Boolean = {
-    article.text.isEmpty || {
-      val text = article.title + ": " + article.text
-      val lang = languageDetector.detect(textObjectFactory.forText(text))
-      !lang.isPresent || lang.asSet.contains(LdLocale.fromString("en"))
-    }
-  }
 
   def rss(source: FeedSource, feed: Feed, item: Node): Option[Article] = {
     val title = stripTitle(unescape(item \ "title"), feed)
@@ -109,7 +117,8 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link get)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    dateOption.map(date => Article(None, source.id, feed.id, title, new URI(link get), commentsLink.map(new URI(_)), date, maybeImgSrc, strippedText)) filter isEnglish
+    dateOption.map(date =>
+      Article(None, source.id, feed.id, title, new URI(link get), commentsLink.map(new URI(_)), date, maybeImgSrc, strippedText)) filter { _.isEnglish }
   }
 
   def stripText(content: NodeSeq, title: String, feed: Feed): String =
@@ -146,7 +155,7 @@ object Article {
     val maybeImgSrc = imageSource(strippedDescription, link)
     val strippedText = stripText(strippedDescription, title, feed)
 
-    Some(Article(None, source.id, feed.id, title, new URI(link), commentsLink.map(new URI(_)), date.right get, maybeImgSrc, strippedText)) filter isEnglish
+    Some(Article(None, source.id, feed.id, title, new URI(link), commentsLink.map(new URI(_)), date.right get, maybeImgSrc, strippedText)) filter { _.isEnglish }
   }
 
   def tooSmall(img: Node): Boolean =
@@ -245,6 +254,10 @@ class ArticlesTable(tag: Tag) extends Table[Article](tag, "articles") {
   def linkIndex = index("articles_link_idx", link)
 
   def titleIndex = index("articles_title_idx", title)
+
+  def similar(articles: Seq[Article]) = {
+    articles.map(a => link === a.link.toString || title === a.title).reduce(_ || _)
+  }
 }
 
 object articles extends TableQuery(new ArticlesTable(_)) {
@@ -260,8 +273,30 @@ object articles extends TableQuery(new ArticlesTable(_)) {
     for {
       s <- sources.bySection(section)
       f <- feeds if f.sourceId === s.id && f.timestamp <= historicTimestamp
-      a <- articles if a.feedId === f.id && a.link === link && (a.pubDate > pubDate || (a.pubDate === pubDate && f.timestamp > feedTimestamp))
+      a <- this if a.feedId === f.id && a.link === link && (a.pubDate > pubDate || (a.pubDate === pubDate && f.timestamp > feedTimestamp))
     } yield a
+
+  def historicalInGroup(cachedFeed: CachedFeed) = {
+    for {
+      s <- sources.inSameGroup(cachedFeed.source)
+      f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
+      a <- this if a.feedId === f.id
+    } yield a
+  }
+
+  def lastTenInGroup(cachedFeed: CachedFeed) = {
+    historicalInGroup(cachedFeed).sortBy(_.pubDate.desc).take(10)
+  }
+
+  def similar(cachedFeed: CachedFeed, articlez: Seq[Article]): Seq[QueryBase[Seq[Article]]] = {
+    for (articleGroup <- articlez.grouped(100).toSeq) yield {
+      for (a <- articles.historicalInGroup(cachedFeed) if a.similar(articleGroup)) yield a
+    }
+  }
+
+  def byIds(ids: Traversable[Long]) = {
+    for (a <- this if a.id inSet ids) yield a
+  }
 }
 
 case class CachedArticle(source: FeedSource, feed: Feed, record: Article) extends Ordered[CachedArticle] {

@@ -51,4 +51,8 @@ object sources extends TableQuery(new SourcesTable(_)) {
   def bySection(section: String): Query[SourcesTable, FeedSource, Seq] = filter { source =>
     source.active === true && (source.section startsWith section)
   }
+
+  def inSameGroup(source: FeedSource) = {
+    for (s <- sources.active if source.group.fold(s.url.? === source.url.toString)(group => s.group === group)) yield s
+  }
 }

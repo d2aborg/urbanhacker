@@ -3,13 +3,15 @@ package services
 import java.time.{Duration, ZonedDateTime}
 
 import com.google.inject.{Inject, Singleton}
+import model.Article.nonSimilar
+import model.Feed.frequency
 import model.Utils._
 import model._
 import play.api.db.slick.DatabaseConfigProvider
 import play.api.{Environment, Logger}
 import services.SlickPgPostgresDriver.api._
 import slick.dbio.DBIOAction
-import slick.dbio.Effect.{Read, Write}
+import slick.dbio.Effect.Read
 import slick.jdbc.JdbcProfile
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -114,23 +116,42 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] =
     db.run {
       feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { _ =>
-        val allArticles = cachedFeed.articles.map(_.record)
+        val allArticles = nonSimilar(cachedFeed.articles.map(_.record).toList)
+        DBIO.sequence(articles.similar(cachedFeed, allArticles).map(_.result)).map(_.flatten.toSet).flatMap { similarArticles =>
+          val newOrUpdatedArticles = allArticles.filterNot(a => similarArticles.exists(a.same))
+          val updatedArticles = similarArticles.filterNot(a => allArticles.exists(a.same))
 
-        findExistingArticlesAction(cachedFeed, allArticles).flatMap { existingArticles =>
-          val newArticles = allArticles.filterNot(a => existingArticles.exists(a.same))
+          if (newOrUpdatedArticles isEmpty) {
+            downloads.byCachedFeed(cachedFeed).delete map { numDeleted =>
+              if (numDeleted > 0)
+                Logger.debug(s"${cachedFeed.source.url}: Deleted download ${cachedFeed.record.downloadId} with no new articles")
 
-          if (newArticles isEmpty) {
-            deleteCachedFeedAction(cachedFeed).map(_ => None)
+              None
+            }
           } else {
-            Logger.debug(s"${cachedFeed.source.url}: Saving feed for Download ${cachedFeed.record.downloadId}")
+            articles.byIds(updatedArticles.flatMap(_.id)).delete.flatMap { numDeletedSimilarArticles =>
+              if (numDeletedSimilarArticles > 0)
+                Logger.debug(s"${cachedFeed.source.url}: Deleted $numDeletedSimilarArticles similar articles")
 
-            Logger.debug(s"${cachedFeed.source.url}: ${allArticles.size} articles: ${allArticles.map(_.title)}")
-            Logger.debug(s"${cachedFeed.source.url}: ${existingArticles.size} existing articles: ${existingArticles.map(_.title)}")
-            Logger.debug(s"${cachedFeed.source.url}: ${newArticles.size} new articles: ${newArticles.map(_.title)}")
+              Logger.debug(s"${cachedFeed.source.url}: Saving feed for Download ${cachedFeed.record.downloadId}")
 
-            sourceGroupTopTenPubDatesAction(cachedFeed).flatMap {
-              saveCachedFeedAction(cachedFeed, newArticles, _).map { case (feedId, _) =>
-                Some(feedId)
+              Logger.debug(s"${cachedFeed.source.url}: ${allArticles.size} articles: ${allArticles.map(_.title)}")
+              Logger.debug(s"${cachedFeed.source.url}: ${similarArticles.size} similar articles: ${similarArticles.map(_.title)}")
+              Logger.debug(s"${cachedFeed.source.url}: ${newOrUpdatedArticles.size} new or updated articles: ${newOrUpdatedArticles.map(_.title)}")
+
+              articles.lastTenInGroup(cachedFeed).map(_.pubDate).result.flatMap { topTenGroupPubDates =>
+                cachedFeed.record.groupFrequency = frequency(topTenGroupPubDates ++ newOrUpdatedArticles.map(_.pubDate))
+
+                for {
+                  feedId <- feeds.returningId += cachedFeed.record
+                  articleIds <- articles.returningId ++= newOrUpdatedArticles.map(_.copy(feedId = Some(feedId)))
+                } yield {
+                  Logger.info(s"${cachedFeed.source.url}: " +
+                    s"Saved Feed $feedId and ${articleIds.size}/${newOrUpdatedArticles.size} Articles for " +
+                    s"Download ${cachedFeed.record.downloadId}")
+
+                  Some(feedId)
+                }
               }
             }
           }
@@ -141,62 +162,6 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         Logger.warn(s"${cachedFeed.source.url}: Failed to save feed for Download ${cachedFeed.record.downloadId}", t)
         None
     }
-
-  private def saveCachedFeedAction(cachedFeed: CachedFeed, newArticles: Seq[Article], topTenGroupPubDates: Seq[ZonedDateTime]): DBIOAction[(Long, Seq[Long]), NoStream, Write] = {
-    cachedFeed.record.groupFrequency = Feed.frequency(topTenGroupPubDates ++ newArticles.map(_.pubDate))
-
-    saveCachedFeedAction(cachedFeed, newArticles)
-  }
-
-  private def saveCachedFeedAction(cachedFeed: CachedFeed, newArticles: Seq[Article]): DBIOAction[(Long, Seq[Long]), NoStream, Write] = {
-    for {
-      feedId <- feeds.returningId += cachedFeed.record
-      articleIds <- articles.returningId ++= newArticles.map(_.copy(feedId = Some(feedId)))
-    } yield {
-      Logger.info(s"${cachedFeed.source.url}: " +
-        s"Saved Feed $feedId and ${articleIds.size}/${newArticles.size} Articles for " +
-        s"Download ${cachedFeed.record.downloadId}")
-
-      (feedId, articleIds)
-    }
-  }
-
-  private def sourceGroupTopTenPubDatesAction(cachedFeed: CachedFeed) = {
-    sourceGroupPubDatesAction(cachedFeed).sortBy(_.desc).take(10).result
-  }
-
-  private def sourceGroupPubDatesAction(cachedFeed: CachedFeed) = {
-    for {
-      s <- sources.active if cachedFeed.source.group.fold(s.url.? === cachedFeed.source.url.toString)(group => s.group === group)
-      f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-      a <- articles if a.feedId === f.id
-    } yield a.pubDate
-  }
-
-  private def deleteCachedFeedAction(cachedFeed: CachedFeed): DBIOAction[Int, NoStream, Write] = {
-    downloads.byId(Some(cachedFeed.record.downloadId)).delete map { numDeleted =>
-      if (numDeleted > 0)
-        Logger.debug(s"${cachedFeed.source.url}: " +
-          s"Deleted download ${cachedFeed.record.downloadId} with no new articles")
-
-      numDeleted
-    }
-  }
-
-  private def findExistingArticlesAction(cachedFeed: CachedFeed, allArticles: Seq[Article]) = {
-    DBIO.sequence {
-      for (allArticlesGroup <- allArticles.grouped(100).toSeq) yield {
-        for {
-          s <- sources.active if (s.group.isEmpty && s.url === cachedFeed.source.url.toString) || (s.group.isDefined && s.group === cachedFeed.source.group)
-          f <- feeds if f.sourceId === s.id && f.timestamp <= cachedFeed.record.metaData.timestamp
-          a <- articles if a.feedId === f.id &&
-          allArticlesGroup.map(ga => a.link === ga.link.toString || a.title === ga.title).reduce(_ || _)
-        } yield a
-      } result
-    } map {
-      _.flatten.toSet
-    }
-  }
 
   def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
     downloads.byId(Some(downloadId)).delete map { numDeleted =>
