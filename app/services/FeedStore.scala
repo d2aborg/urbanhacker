@@ -80,7 +80,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   }
 
   def loadDownload(source: FeedSource, downloadId: Long): Future[Option[Download]] = db.run {
-    Logger.trace(s"${source.url}: Loading download: " + downloadId)
+    Logger.trace(s"Loading download: $downloadId: ${source.url}")
     downloads.byId(Some(downloadId)).result.headOption
   }
 
@@ -100,7 +100,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
     }
   } tap { eventualSaved =>
     for ((source, id, metaData) <- eventualSaved)
-      Logger.info(s"${source.url}: Saved Download $id")
+      Logger.info(s"Saved Download $id: ${source.url}")
   }
 
   def loadLatestMetaData(source: FeedSource): Future[Option[MetaData]] = db.run {
@@ -123,16 +123,16 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
           if (newOrUpdatedArticles isEmpty) {
             downloads.byCachedFeed(cachedFeed).delete map { numDeleted =>
               if (numDeleted > 0)
-                Logger.info(s"${cachedFeed.source.url}: Deleted download ${cachedFeed.record.downloadId} with no new articles")
+                Logger.info(s"Deleted download ${cachedFeed.record.downloadId} with no new articles: ${cachedFeed.source.url}")
 
               None
             }
           } else {
             articles.byIds(updatedArticles.flatMap(_.id)).delete.flatMap { numDeletedSimilarArticles =>
               if (numDeletedSimilarArticles > 0)
-                Logger.debug(s"${cachedFeed.source.url}: Deleted $numDeletedSimilarArticles similar articles")
+                Logger.debug(s"Deleted $numDeletedSimilarArticles similar articles: ${cachedFeed.source.url}")
 
-              Logger.trace(s"${cachedFeed.source.url}: Saving feed for Download ${cachedFeed.record.downloadId}")
+              Logger.trace(s"Saving feed for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
 
               Logger.debug(s"${cachedFeed.source.url}: ${allArticles.size} articles: ${allArticles.map(_.title)}")
               Logger.debug(s"${cachedFeed.source.url}: ${similarArticles.size} similar articles: ${similarArticles.map(_.title)}")
@@ -145,9 +145,8 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
                   feedId <- feeds.returningId += cachedFeed.record
                   articleIds <- articles.returningId ++= newOrUpdatedArticles.map(_.copy(feedId = Some(feedId)))
                 } yield {
-                  Logger.info(s"${cachedFeed.source.url}: " +
-                    s"Saved Feed $feedId and ${articleIds.size}/${cachedFeed.articles.size} Articles for " +
-                    s"Download ${cachedFeed.record.downloadId}")
+                  Logger.info(s"Saved Feed $feedId and ${articleIds.size}/${cachedFeed.articles.size} Articles for " +
+                    s"Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}")
 
                   Some(feedId)
                 }
@@ -158,13 +157,13 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       } transactionally
     } recover {
       case t: Throwable =>
-        Logger.warn(s"${cachedFeed.source.url}: Failed to save feed for Download ${cachedFeed.record.downloadId}", t)
+        Logger.warn(s"Failed to save feed for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}", t)
         None
     }
 
   def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
     downloads.byId(Some(downloadId)).delete map { numDeleted =>
-      if (numDeleted > 0) Logger.warn(s"${source.url}: Deleted unparseable download $downloadId")
+      if (numDeleted > 0) Logger.warn(s"Deleted unparseable download $downloadId: ${source.url}")
       numDeleted > 0
     }
   }

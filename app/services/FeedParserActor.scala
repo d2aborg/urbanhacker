@@ -21,7 +21,7 @@ class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionCont
     case ParseFeed(source: FeedSource, downloadId: Long) =>
       Await.result(parseSave(source, downloadId) recover {
         case t: Throwable =>
-          Logger.warn(s"${source.url}: Failed to parse Download $downloadId", t)
+          Logger.warn(s"Failed to parse Download $downloadId: ${source.url}", t)
           feedStore.deleteUnparsedDownload(source, downloadId)
           None
       }, 20.seconds)
@@ -36,7 +36,7 @@ class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionCont
   }
 
   def parse(source: FeedSource)(download: Download): Future[Option[CachedFeed]] = Future {
-    Logger.trace(s"${source.url}: Parsing Download: ${download.id}")
+    Logger.trace(s"Parsing Download: ${download.id}: ${source.url}")
     val xml = XML.load(
       new InputStreamReader(new ByteArrayInputStream(download.content), download.encoding.getOrElse(guessEncoding(download.content))))
     val parsedDownload = ParsedDownload(download, xml)
