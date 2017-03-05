@@ -70,13 +70,6 @@ case class Article(id: Option[Long], sourceId: Long, feedId: Option[Long], title
 }
 
 object Article {
-  def nonSimilar(articlez: List[Article]): List[Article] = {
-    articlez match {
-      case Nil => Nil
-      case head :: tail => head :: nonSimilar(tail.filterNot(head.similar))
-    }
-  }
-
   val languageDetector: LanguageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard)
     .withProfiles(new LanguageProfileReader().readAllBuiltIn)
     .build

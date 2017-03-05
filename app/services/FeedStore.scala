@@ -3,7 +3,6 @@ package services
 import java.time.{Duration, ZonedDateTime}
 
 import com.google.inject.{Inject, Singleton}
-import model.Article.nonSimilar
 import model.Feed.frequency
 import model.Utils._
 import model._
@@ -116,7 +115,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
   def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] =
     db.run {
       feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { _ =>
-        val allArticles = nonSimilar(cachedFeed.articles.map(_.record).toList)
+        val allArticles = cachedFeed.nonSimilarArticles
         DBIO.sequence(articles.similar(cachedFeed, allArticles).map(_.result)).map(_.flatten.toSet).flatMap { similarArticles =>
           val newOrUpdatedArticles = allArticles.filterNot(a => similarArticles.exists(a.same))
           val updatedArticles = similarArticles.filterNot(a => allArticles.exists(a.same))
@@ -124,7 +123,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
           if (newOrUpdatedArticles isEmpty) {
             downloads.byCachedFeed(cachedFeed).delete map { numDeleted =>
               if (numDeleted > 0)
-                Logger.debug(s"${cachedFeed.source.url}: Deleted download ${cachedFeed.record.downloadId} with no new articles")
+                Logger.info(s"${cachedFeed.source.url}: Deleted download ${cachedFeed.record.downloadId} with no new articles")
 
               None
             }
@@ -147,7 +146,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
                   articleIds <- articles.returningId ++= newOrUpdatedArticles.map(_.copy(feedId = Some(feedId)))
                 } yield {
                   Logger.info(s"${cachedFeed.source.url}: " +
-                    s"Saved Feed $feedId and ${articleIds.size}/${newOrUpdatedArticles.size} Articles for " +
+                    s"Saved Feed $feedId and ${articleIds.size}/${cachedFeed.articles.size} Articles for " +
                     s"Download ${cachedFeed.record.downloadId}")
 
                   Some(feedId)

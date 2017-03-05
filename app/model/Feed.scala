@@ -163,5 +163,16 @@ case class CachedFeed(source: FeedSource, record: Feed, articles: Seq[CachedArti
   def mkString: String = {
     copy(articles = articles.map(a => a.copy(record = a.record.copy(text = Utils.crop(a.record.text, 20))))).toString
   }
+
+  def nonSimilarArticles: List[Article] = {
+    def nonSimilar(articlez: List[Article]): List[Article] = {
+      articlez match {
+        case Nil => Nil
+        case head :: tail => head :: nonSimilar(tail.filterNot(head.similar))
+      }
+    }
+
+    nonSimilar(articles.map(_.record).sortBy(_.pubDate).reverse.toList)
+  }
 }
 

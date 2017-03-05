@@ -21,7 +21,7 @@ class FeedParserActor(val feedStore: FeedStore)(implicit val exec: ExecutionCont
     case ParseFeed(source: FeedSource, downloadId: Long) =>
       Await.result(parseSave(source, downloadId) recover {
         case t: Throwable =>
-          Logger.warn(s"XXX> ${source.url}: Failed to parse Download $downloadId", t)
+          Logger.warn(s"${source.url}: Failed to parse Download $downloadId", t)
           feedStore.deleteUnparsedDownload(source, downloadId)
           None
       }, 20.seconds)
