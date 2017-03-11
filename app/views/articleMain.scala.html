@@ -69,69 +69,91 @@
     } {
         <script type="text/javascript">
             function loadMore() {
-                var loadMore = $('.load-more');
+                var $loadMore = $('.load-more');
 
-                var nextPageUrl = loadMore.find("a").attr("href");
+                var nextPageUrl = $loadMore.find("a").attr("href");
                 if (!nextPageUrl)
                     return;
 
-                loadMore.find("h3").html("<i class='fa fa-refresh fa-spin fa-2x fa-fw'></i><span class='sr-only'>Loading...</span>");
+                $loadMore.find("h3").html("<i class='fa fa-refresh fa-spin fa-2x fa-fw'></i><span class='sr-only'>Loading...</span>");
                 @if(env.mode == Mode.Dev) {
                     console.log("Loading: " + nextPageUrl);
                 }
 
-                var grid = $('.grid');
+                var $grid = $('.grid');
 
-                var url = nextPageUrl + (nextPageUrl.indexOf('?') == -1 ? '?' : '&') + "ajax=true";
-                $.ajax({ url: url }).done(function(data) {
-                    var newContent = $("<div>").append(data);
+                $.ajax({ url: nextPageUrl + (nextPageUrl.indexOf('?') == -1 ? '?' : '&') + "ajax=true" }).done(function(data) {
+                    var $newContent = $("<div />").append(data);
 
-                    var newItems = newContent.find("> .grid > .grid-item");
-                    grid.append(newItems).masonry('appended', newItems);
-                    grid.imagesLoaded().progress( function() {
-                      grid.masonry('layout');
+                    var $newGridItems = $newContent.children(".grid").children(".grid-item");
+                    $grid.append($newGridItems).masonry('appended', $newGridItems);
+                    $newGridItems.each(function () {
+                        $(this).imagesLoaded().progress( function() {
+                            $grid.masonry('layout');
+                        });
                     });
 
-                    loadMore.replaceWith(newContent.find("> .load-more"))
+                    $loadMore.replaceWith($newContent.children(".load-more"))
                 });
             }
 
+            function shouldBeHidden($element) {
+                var $win = $(window);
+                var top = $element.offset().top;
+                var bottom = top + $element.outerHeight(true);
+                return bottom < $win.scrollTop() - 1000 || top > $win.scrollTop() + $win.height() + 1000;
+            }
+
+            function shouldBeVisible($this) {
+                return !shouldBeHidden($this);
+            }
+
+            function articles() {
+                return $(".content .article");
+            }
+
             $(document).ready(function() {
-                var win = $(window);
-                var doc = $(document);
+                $(".content .permalink-timestamp").each(function() {
+                    var dts = $(this).attr("datetime");
+                    var mom = moment(new Date(Date.parse(dts)));
+                    mom.utcOffset(moment().utcOffset());
+                    $(this).html(mom.format("ddd, D MMM YYYY, HH:mm:ss"));
+                });
+
+                var $win = $(window);
+                var $doc = $(document);
 
                 // Each time the user scrolls
-                win.scroll(function() {
+                $win.scroll(function() {
                     // End of the document reached soon?
-                    if (doc.height() - (win.scrollTop() + win.height()) < 1000) {
+                    if ($doc.height() - ($win.scrollTop() + $win.height()) < 1000) {
                         loadMore();
                     }
 
-                    function shouldBeHidden($element) {
-                        var top = $element.offset().top;
-                        var bottom = top + $element.outerHeight(true);
-                        return bottom < win.scrollTop() - 1000 || top > win.scrollTop() + win.height() + 1000;
-                    }
-
-                    function shouldBeVisible($this) {
-                        return !shouldBeHidden($this);
-                    }
-
-                    var $articles = $(".content .article");
+                    var $articles = articles();
 
                     $articles.filter(".invisible").each(function() {
                         var $this = $(this);
                         if (shouldBeVisible($this)) {
-                            $this.replaceWith($this.prop("hiddenElement"));
+                            var $original = $this.prop("hiddenElement");
+                            @if(env.mode == Mode.Dev) {
+                                console.log("Showing: " + $original.children("h4").text());
+                            }
+
+                            $this.replaceWith($original);
                         }
                     });
 
                     $articles.not(".invisible").each(function() {
                         var $this = $(this);
                         if (shouldBeHidden($this)) {
+                            @if(env.mode == Mode.Dev) {
+                                console.log("Hiding: " + $this.children("h4").text());
+                            }
+
                             $this.replaceWith($("<article class='article invisible'/>")
                                     .height($this.height())
-                                    .prop("hiddenElement", this));
+                                    .prop("hiddenElement", $this));
                         }
                     });
                 });
@@ -140,7 +162,8 @@
                     @if(env.mode == Mode.Dev) {
                         console.log("Refreshing dates...");
                     }
-                    $(".content .article .since-timestamp").each(function() {
+
+                    articles().filter(".since-timestamp").each(function() {
                         var dts = $(this).attr("datetime");
                         var mom = moment(new Date(Date.parse(dts)));
                         $(this).html(mom.fromNow());
@@ -153,17 +176,12 @@
                     }
                 }, 60000); // every minute
 
-                $(".content .permalink-timestamp").each(function() {
-                    var dts = $(this).attr("datetime");
-                    var mom = moment(new Date(Date.parse(dts)));
-                    mom.utcOffset(moment().utcOffset());
-                    $(this).html(mom.format("ddd, D MMM YYYY, HH:mm:ss"));
-                });
-
                 // layout Masonry after each image loads
                 var $grid = $('.grid');
-                $grid.imagesLoaded().progress(function () {
-                    $grid.masonry('layout');
+                $grid.children(".grid-item").each(function() {
+                    $(this).imagesLoaded().progress(function () {
+                        $grid.masonry('layout');
+                    });
                 });
             });
         </script>
