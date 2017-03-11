@@ -103,20 +103,35 @@
                 // Each time the user scrolls
                 win.scroll(function() {
                     // End of the document reached soon?
-                    var scrollTop = win.scrollTop();
-                    var scrollBottom = scrollTop + win.height();
-                    if (doc.height() - (scrollBottom) < 1000) {
+                    if (doc.height() - (win.scrollTop() + win.height()) < 1000) {
                         loadMore();
                     }
 
-                    $(".content .article").each(function() {
-                        var elm = $(this);
-                        var top = elm.offset().top;
-                        var bottom = top + elm.outerHeight(true);
-                        if (bottom < scrollTop - 1000 || top > scrollBottom + 1000) {
-                            elm.addClass("invisible");
-                        } else {
-                            elm.removeClass("invisible");
+                    function shouldBeHidden($element) {
+                        var top = $element.offset().top;
+                        var bottom = top + $element.outerHeight(true);
+                        return bottom < win.scrollTop() - 1000 || top > win.scrollTop() + win.height() + 1000;
+                    }
+
+                    function shouldBeVisible($this) {
+                        return !shouldBeHidden($this);
+                    }
+
+                    var $articles = $(".content .article");
+
+                    $articles.filter(".invisible").each(function() {
+                        var $this = $(this);
+                        if (shouldBeVisible($this)) {
+                            $this.replaceWith($this.prop("hiddenElement"));
+                        }
+                    });
+
+                    $articles.not(".invisible").each(function() {
+                        var $this = $(this);
+                        if (shouldBeHidden($this)) {
+                            $this.replaceWith($("<article class='article invisible'/>")
+                                    .height($this.height())
+                                    .prop("hiddenElement", this));
                         }
                     });
                 });
