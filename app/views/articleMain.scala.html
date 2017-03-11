@@ -87,6 +87,7 @@
 
                     var $newGridItems = $newContent.children(".grid").children(".grid-item");
                     $grid.append($newGridItems).masonry('appended', $newGridItems);
+
                     $newGridItems.each(function () {
                         $(this).imagesLoaded().progress( function() {
                             $grid.masonry('layout');
@@ -97,15 +98,14 @@
                 });
             }
 
-            function shouldBeHidden($element) {
-                var $win = $(window);
+            function shouldBeHidden(viewPort, $element) {
                 var top = $element.offset().top;
                 var bottom = top + $element.outerHeight(true);
-                return bottom < $win.scrollTop() - 1000 || top > $win.scrollTop() + $win.height() + 1000;
+                return bottom < viewPort.top - 1000 || top > viewPort.bottom + 1000;
             }
 
-            function shouldBeVisible($this) {
-                return !shouldBeHidden($this);
+            function shouldBeVisible(viewPort, $element) {
+                return !shouldBeHidden(viewPort, $element);
             }
 
             function articles() {
@@ -120,33 +120,40 @@
                     $(this).html(mom.format("ddd, D MMM YYYY, HH:mm:ss"));
                 });
 
-                var $win = $(window);
-                var $doc = $(document);
-
                 // Each time the user scrolls
-                $win.scroll(function() {
+                $(window).scroll(function(event) {
+                    var $win = $(window);
+                    var viewPort = {
+                        top: $win.scrollTop(),
+                        bottom: $win.scrollTop() + $win.height()
+                    };
+
                     // End of the document reached soon?
-                    if ($doc.height() - ($win.scrollTop() + $win.height()) < 1000) {
+                    if ($(document).height() - viewPort.bottom < 1000) {
                         loadMore();
                     }
 
                     var $articles = articles();
+                    var $articlesToShow = $articles.filter(".invisible").filter(function() {
+                        return shouldBeVisible(viewPort, $(this));
+                    });
+                    var $articlesToHide = $articles.not(".invisible").filter(function() {
+                        return shouldBeHidden(viewPort, $(this));
+                    });
 
-                    $articles.filter(".invisible").each(function() {
-                        var $this = $(this);
-                        if (shouldBeVisible($this)) {
+                    if ($articlesToShow.length > 0 || $articlesToHide.length > 0) {
+                        $articlesToShow.each(function() {
+                            var $this = $(this);
                             var $original = $this.prop("hiddenElement");
                             @if(env.mode == Mode.Dev) {
                                 console.log("Showing: " + $original.children("h4").text());
                             }
 
                             $this.replaceWith($original);
-                        }
-                    });
+                        });
 
-                    $articles.not(".invisible").each(function() {
-                        var $this = $(this);
-                        if (shouldBeHidden($this)) {
+                        $articlesToHide.each(function() {
+                            var $this = $(this);
                             @if(env.mode == Mode.Dev) {
                                 console.log("Hiding: " + $this.children("h4").text());
                             }
@@ -154,8 +161,10 @@
                             $this.replaceWith($("<article class='article invisible'/>")
                                     .height($this.height())
                                     .prop("hiddenElement", $this));
-                        }
-                    });
+                        });
+
+                        $('.grid').masonry('layout');
+                    }
                 });
 
                 setInterval(function() {
