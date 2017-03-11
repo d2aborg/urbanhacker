@@ -102,10 +102,23 @@
 
                 // Each time the user scrolls
                 win.scroll(function() {
-                    // End of the document reached?
-                    if (doc.height() - (win.scrollTop() + win.height()) < 1000) {
+                    // End of the document reached soon?
+                    var scrollTop = win.scrollTop();
+                    var scrollBottom = scrollTop + win.height();
+                    if (doc.height() - (scrollBottom) < 1000) {
                         loadMore();
                     }
+
+                    $(".content .article").each(function() {
+                        var elm = $(this);
+                        var top = elm.offset().top;
+                        var bottom = top + elm.outerHeight(true);
+                        if (bottom < scrollTop - 1000 || top > scrollBottom + 1000) {
+                            elm.addClass("invisible");
+                        } else {
+                            elm.removeClass("invisible");
+                        }
+                    });
                 });
 
                 setInterval(function() {

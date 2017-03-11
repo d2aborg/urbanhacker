@@ -47,7 +47,7 @@ class FeedUpdater @Inject()(feedStore: FeedStore,
           .sortBy(_.timestamp)
           .take((sources.size + refreshCycleMinutes - 1) / refreshCycleMinutes)
 
-        update((Set.empty ++ outdatedSources ++ intervalSources).toSeq)
+        update(outdatedSources ++ intervalSources)
       }
     } tap { reloadTask =>
       lifecycle.addStopHook { () =>
