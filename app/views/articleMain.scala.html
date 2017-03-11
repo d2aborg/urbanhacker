@@ -128,11 +128,12 @@
                         bottom: $win.scrollTop() + $win.height()
                     };
 
-                    // End of the document reached soon?
+                    // Load more content if end of page is reached soon
                     if ($(document).height() - viewPort.bottom < 1000) {
                         loadMore();
                     }
 
+                    // Hide articles far away from viewport and show hidden articles that are now close to viewport
                     var $articles = articles();
                     var $articlesToShow = $articles.filter(".invisible").filter(function() {
                         return shouldBeVisible(viewPort, $(this));
@@ -144,6 +145,7 @@
                     if ($articlesToShow.length > 0 || $articlesToHide.length > 0) {
                         $articlesToShow.each(function() {
                             var $this = $(this);
+
                             var $original = $this.prop("hiddenElement");
                             @if(env.mode == Mode.Dev) {
                                 console.log("Showing: " + $original.children("h4").text());
@@ -154,6 +156,7 @@
 
                         $articlesToHide.each(function() {
                             var $this = $(this);
+
                             @if(env.mode == Mode.Dev) {
                                 console.log("Hiding: " + $this.children("h4").text());
                             }

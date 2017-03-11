@@ -1,6 +1,6 @@
 body {
   min-height: 2000px;
-  padding-top: 70px;
+  padding-top: 2.5em;
 }
 
 body > .container > h1 a {
@@ -13,13 +13,26 @@ body > .container > h1 a:hover {
 h1 .urban {
     font-family: marsneveneksk;
     color: hotpink;
-    font-size: 1.5em;
+    font-size: 0.8em;
+    font-size: 12vw;
+    margin-left: 0.125em;
 }
 h1 .urban::before {
     content: "( ";
 }
 h1 .urban::after {
     content: " )";
+}
+
+@media (min-width: 576px) {
+    body {
+        padding-top: 3em;
+    }
+
+    h1 .urban {
+        font-size: 1.5em;
+        margin-left: 0.125em;
+    }
 }
 
 .footer {
