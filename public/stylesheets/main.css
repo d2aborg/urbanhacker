@@ -14,7 +14,7 @@ h1 .urban {
     font-family: marsneveneksk;
     color: hotpink;
     font-size: 0.8em;
-    font-size: 12vw;
+    font-size: 10vw;
     margin-left: 0.125em;
 }
 h1 .urban::before {
