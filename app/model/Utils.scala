@@ -77,7 +77,7 @@ object Utils {
       .optionalStart.appendLiteral(' ').optionalEnd.appendOffset("+HHMM", "GMT")
       .toFormatter(Locale.US)),
     // 2015-09-29 14:56:55 UTC
-    ("ISO With Spaces", DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss zzz", Locale.US)))
+    ("ISO With Spaces", java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss zzz", Locale.US)))
 
   def parseInternetDateTime(dts: String): Either[Seq[DateTimeParseException], ZonedDateTime] = {
     def parseInternetDateTime(dtf: DateTimeFormatter, desc: String): Either[DateTimeParseException, ZonedDateTime] = {
