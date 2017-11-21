@@ -78,11 +78,12 @@ a:hover {
     opacity: 1;
 }
 
-.article a.title {
-    color: hotpink;
+.article .title {
+    font-size: 1.2em;
 }
-.article a.title:hover {
-    color: deeppink;
+
+.article .content {
+    font-size: 0.95em;
 }
 
 .load-more h3 {

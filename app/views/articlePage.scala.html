@@ -9,7 +9,7 @@
         @for(article <- articleGroup) {
             <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4 grid-item">
                 <article class='article'>
-                    <h4><a href="@article.record.link" class="title" target="_blank">@article.record.title</a></h4>
+                    <h4 class="title"><a href="@article.record.link" target="_blank">@article.record.title</a></h4>
 
                     @article.record.imageSource.map { imgSrc =>
                         <div class="image">
@@ -18,7 +18,7 @@
                     }
 
                     @if(article.record.croppedText.nonEmpty) {
-                        <p>@article.record.croppedText <a href="@article.record.link" class="source" target="_blank">&raquo;</a></p>
+                        <p class="content">@article.record.croppedText <a href="@article.record.link" class="source" target="_blank">&raquo;</a></p>
                     }
 
                     <nav>
