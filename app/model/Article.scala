@@ -282,7 +282,7 @@ object articles extends TableQuery(new ArticlesTable(_)) {
   }
 
   def similar(cachedFeed: CachedFeed, articlez: Seq[Article]): Seq[QueryBase[Seq[Article]]] = {
-    for (articleGroup <- articlez.grouped(100).toSeq) yield {
+    for (articleGroup <- articlez.grouped(50).toSeq) yield {
       for (a <- articles.historicalInGroup(cachedFeed) if a.similar(articleGroup)) yield a
     }
   }

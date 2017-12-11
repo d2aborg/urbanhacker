@@ -112,13 +112,17 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
       .map(_.map(_.metaData))
   }
 
-  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] =
+  def saveCachedFeed(cachedFeed: CachedFeed): Future[Option[Long]] = {
+    Logger.trace(s"${cachedFeed.source.url}: Saving cached feed")
     db.run {
       feeds.filter(_.downloadId === cachedFeed.record.downloadId).delete.flatMap { _ =>
         val allArticles = cachedFeed.nonSimilarArticles
+        Logger.trace(s"${cachedFeed.source.url}: Loading similar articles for ${allArticles.size} nonsimilar")
         DBIO.sequence(articles.similar(cachedFeed, allArticles).map(_.result)).map(_.flatten.toSet).flatMap { similarArticles =>
           val newOrUpdatedArticles = allArticles.filterNot(a => similarArticles.exists(a.same))
           val updatedArticles = similarArticles.filterNot(a => allArticles.exists(a.same))
+
+          Logger.trace(s"${cachedFeed.source.url}: Loaded similar articles: ${similarArticles.size}")
 
           if (newOrUpdatedArticles isEmpty) {
             downloads.byCachedFeed(cachedFeed).delete map { numDeleted =>
@@ -160,6 +164,7 @@ class FeedStore @Inject()(dbConfigProvider: DatabaseConfigProvider, env: Environ
         Logger.warn(s"Failed to save feed for Download ${cachedFeed.record.downloadId}: ${cachedFeed.source.url}", t)
         None
     }
+  }
 
   def deleteUnparsedDownload(source: FeedSource, downloadId: Long): Future[Boolean] = db.run {
     downloads.byId(Some(downloadId)).delete map { numDeleted =>
