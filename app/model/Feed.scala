@@ -1,7 +1,6 @@
 package model
 
 import com.markatta.timeforscala._
-
 import java.net.URI
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
@@ -12,6 +11,9 @@ import services.SlickPgPostgresDriver.api._
 import slick.lifted.Tag
 import slick.model.ForeignKeyAction.{Cascade, Restrict}
 
+import scala.annotation.tailrec
+import scala.collection.immutable.LinearSeq
+import scala.collection.mutable
 import scala.xml.{Node, NodeSeq}
 
 case class Feed(id: Option[Long],
@@ -164,15 +166,20 @@ case class CachedFeed(source: FeedSource, record: Feed, articles: Seq[CachedArti
     copy(articles = articles.map(a => a.copy(record = a.record.copy(text = Utils.crop(a.record.text, 20))))).toString
   }
 
-  def nonSimilarArticles: List[Article] = {
-    def nonSimilar(articlez: List[Article]): List[Article] = {
-      articlez match {
-        case Nil => Nil
-        case head :: tail => head :: nonSimilar(tail.filterNot(head.similar))
+  def nonSimilarArticles: Seq[Article] = {
+    val nonSimilar = mutable.Buffer.empty[Article]
+
+    @tailrec def collectNonSimilar(xs: LinearSeq[Article]): Unit = {
+      if (xs.nonEmpty) {
+        val head = xs.head
+        nonSimilar += head
+        collectNonSimilar(xs.tail.filterNot(head.similar))
       }
     }
 
-    nonSimilar(articles.map(_.record).sortBy(_.pubDate).reverse.toList)
+    collectNonSimilar(articles.map(_.record).sortBy(_.pubDate)(Ordering[ZonedDateTime].reverse).to[List])
+
+    nonSimilar
   }
 }
 
