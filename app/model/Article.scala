@@ -12,7 +12,7 @@ import com.optimaize.langdetect.ngram.NgramExtractors
 import com.optimaize.langdetect.profiles.LanguageProfileReader
 import com.optimaize.langdetect.text.{CommonTextObjectFactories, TextObjectFactory}
 import com.optimaize.langdetect.{LanguageDetector, LanguageDetectorBuilder}
-import model.Article.{languageDetector, textObjectFactory}
+import model.Article.{LANGUAGE_DETECTOR, TEXT_OBJECT_FACTORY}
 import model.Utils._
 import org.ccil.cowan.tagsoup.jaxp.SAXFactoryImpl
 import play.api.Logger
@@ -63,18 +63,18 @@ case class Article(id: Option[Long], sourceId: Long, feedId: Option[Long], title
   def isEnglish: Boolean = {
     text.isEmpty || {
       val titleAndText = title + ": " + text
-      val lang = languageDetector.detect(textObjectFactory.forText(titleAndText))
+      val lang = LANGUAGE_DETECTOR.detect(TEXT_OBJECT_FACTORY.forText(titleAndText))
       !lang.isPresent || lang.asSet.contains(LdLocale.fromString("en"))
     }
   }
 }
 
 object Article {
-  val languageDetector: LanguageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard)
+  val LANGUAGE_DETECTOR: LanguageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard)
     .withProfiles(new LanguageProfileReader().readAllBuiltIn)
     .build
 
-  val textObjectFactory: TextObjectFactory = CommonTextObjectFactories.forDetectingShortCleanText()
+  val TEXT_OBJECT_FACTORY: TextObjectFactory = CommonTextObjectFactories.forDetectingShortCleanText()
 
   def rss(source: FeedSource, feed: Feed, item: Node): Option[Article] = {
     val title = stripTitle(unescape(item \ "title"), feed)

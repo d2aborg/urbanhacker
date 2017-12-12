@@ -10,8 +10,7 @@ import scala.xml.Elem
 
 case class MetaData(lastModified: Option[String], eTag: Option[String], checksum: String, timestamp: ZonedDateTime)
 
-case class Download(id: Option[Long], sourceId: Long, metaData: MetaData, content: Array[Byte], encoding: Option[String]) {
-}
+case class Download(id: Option[Long], sourceId: Long, metaData: MetaData, content: Array[Byte], encoding: Option[String])
 
 case class ParsedDownload(record: Download, xml: Elem)
 
