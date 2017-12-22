@@ -1,5 +1,5 @@
 name := "urbanhacker"
-organization := "org.d2ab"
+organization := "aborg.nu"
 
 version := "1.0-SNAPSHOT"
 
